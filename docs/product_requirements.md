@@ -185,8 +185,8 @@ External: OpenAI / Anthropic / Gemini / DeepSeek / OpenRouter / Ollama
 | File tree | react-complex-tree | Accessible tree view with drag-and-drop, inline rename, virtualization. Actively maintained, zero dependencies, W3C compliant. Evaluate react-arborist (richer API but unmaintained since June 2025) as alternative during Phase 3 Day 1. |
 | Components | Radix UI (15 primitives) | |
 | Styling | CSS modules, `.sc-` prefix | |
-| Icons | Lucide React | Supplementary icon set |
-| Icons | Material Symbols Outlined | Primary icon set (Google variable font). Loaded via Google Fonts CDN. Used for all navigation, action, and UI icons per the UI design spec. |
+| Icons | Lucide React | Primary icon set. Used for all navigation, action, and UI icons per the UI design spec. |
+| Icons | Material Symbols Outlined | Supplementary icon set (Google variable font). Fallback for any icon not available in Lucide React. Loaded via Google Fonts CDN. |
 | Command | cmdk | |
 | Diff | diff + react-diff-viewer-continued | |
 | Graph | Cytoscape.js (lazy) | |
@@ -482,7 +482,7 @@ No external dashboard.
 
 **Embedding model is strictly admin-only — enforced at three levels:**
 1. **API level:** Embedding migration and estimate endpoints require `Depends(require_admin)`. Standard users receive 403.
-2. **Settings level:** The RAG tab in user Settings (Tab 4c) shows the current embedding model as read-only display text — not a dropdown. Only the Admin Dashboard (Tab 5c) shows the change-model dropdown.
+2. **Settings level:** System Settings → Models & Inference shows the current embedding model as read-only display text for standard users — not a dropdown. Only the Admin Dashboard (Storage tab) shows the change-model dropdown.
 3. **Config level:** `settings.yaml` `rag.embedding_model` is a server-side config that users cannot override via `user_settings`.
 
 **Migration pipeline (6 phases):**
@@ -704,7 +704,7 @@ When creating a literature note from an imported document:
 2. Include source URL in frontmatter...
 ```
 
-**MCP tool triggers (Phase 7):** When MCP tools are available, skill triggers can reference them using the qualified name format: `mcp_{server}_{tool}`. Example: `triggers.tools: [mcp_zotero_search, captureFromURL]` matches both the MCP tool and the built-in tool. Skill authors can find available MCP tool names in Settings → Tab 4j (the skill editor shows a tool name picker when MCP is enabled).
+**MCP tool triggers (Phase 7):** When MCP tools are available, skill triggers can reference them using the qualified name format: `mcp_{server}_{tool}`. Example: `triggers.tools: [mcp_zotero_search, captureFromURL]` matches both the MCP tool and the built-in tool. Skill authors can find available MCP tool names in Customize → My Skills (the skill editor shows a tool name picker when MCP is enabled).
 
 **Namespace scoping:**
 - **System skills** live in `/vaults/shared/skills/`. Owned by SYSTEM_USER_ID, visible to all users. Admin creates and maintains them.
@@ -812,9 +812,12 @@ CREATE TABLE conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id),
     title TEXT, model_id TEXT, mode_id TEXT, project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
     exported_path TEXT, never_export BOOLEAN DEFAULT false, web_search_enabled BOOLEAN DEFAULT false,
+    mcp_mode TEXT NOT NULL DEFAULT 'auto',   -- 'disable' | 'auto' | 'manual' — per-conversation MCP override
     relevant_note_enabled BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX conversations_user_updated ON conversations (user_id, updated_at DESC);
+
+CREATE INDEX conversations_user_project ON conversations (user_id, project_id, updated_at DESC);
 
 CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(), conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -943,7 +946,7 @@ CREATE POLICY private_only ON index_events USING (user_id = current_setting('app
 F-AUTH-01/02, F-SCHEMA-01, F-DOCKER-01, F-IDX-01/02, F-RAG-01/02, F-CHAT-01/02, F-LLM-01, F-SETTINGS-01, F-ZETT-01, F-AGENT-01/02/03, F-MEM-01/02, F-ADMIN-01
 
 **Should Have** — significant value:
-F-CHAT-03/04, F-CHAT-06, F-EDITOR-01, F-ZETT-02/03, F-AGENT-04/05, F-MEM-03, F-SEARCH-01, F-PROJ-01, F-VAULT-01, F-ADMIN-02/03, F-BACKUP-01
+F-CHAT-03/04, F-CHAT-06, F-EDITOR-01, F-ZETT-02/03, F-AGENT-04/05, F-MEM-03, F-SEARCH-01, F-WORK-01, F-VAULT-01, F-ADMIN-02/03, F-BACKUP-01
 
 **Could Have** — nice for v1.0:
 F-CHAT-05, F-PLATFORM-01/02, F-INTEL-01, F-DASH-01
@@ -954,7 +957,7 @@ F-CHAT-05, F-PLATFORM-01/02, F-INTEL-01, F-DASH-01
 |---|---|---|
 | F-BACKUP-01 | Automated backup script + restore procedure (see Section 24). QG: backup + restore tested end-to-end. | 8 |
 | F-INTEL-01 | Vault intelligence features: orphan detection, link suggestions, bidirectional gap detection, smart organizer, MOC generation. Covered by F-VAULT-01 endpoints + agent tools #3–5, #15–16, #22. | 6 |
-| F-DASH-01 | User Dashboard (Page 6a): My Usage, Vault Health, System Status tabs. Covered by `/usage/*` and `/status/*` endpoints. | 6 |
+| F-DASH-01 | Home page intelligence sections: Usage & Performance collapsible (from `/usage/*`) and Vault Health collapsible (from `/vault/health`). System Health moved to System Settings → System Health tab (from `/status/*`). Page 6a (User Dashboard) dissolved in v1.0.5. | 6 |
 
 **Removed from MoSCoW** (previously listed but redundant with other feature IDs or not scoped for v1.0):
 - F-RAG-03, F-AGENT-06 through F-AGENT-11, F-INTEL-02/03, F-SEARCH-02/03, F-PLATFORM-03/04 — these IDs were listed in error. The functionality they covered is either already captured by other feature IDs (e.g., agent tools #6–22 are covered by F-AGENT-01/02/03) or is out-of-scope for v1.0. Do not implement features under these IDs.
@@ -963,7 +966,7 @@ F-CHAT-05, F-PLATFORM-01/02, F-INTEL-01, F-DASH-01
 
 ## 7. Phase 1 — Foundation (Weeks 1–2)
 
-**Backend:** Docker container with supervisord + wait-for-pg.sh, Alembic migrations for full schema (including system_config, enrichment_hash), auth system (JWT, register, login, password change, require_admin, must_change_password), user management CRUD + password reset, VaultRegistry + file watcher (watchdog) + IndexQueue, markdown parser (frontmatter + wikilink extraction), NoteTypeClassifier.
+**Backend:** Docker container with supervisord + wait-for-pg.sh, Alembic migrations for full schema (including system_config, enrichment_hash), auth system (JWT, register, login, password change, require_admin, must_change_password), user management CRUD + password reset, VaultRegistry + file watcher (watchdog) + IndexQueue, markdown parser (frontmatter + wikilink extraction), NoteTypeClassifier, Workspace CRUD (`GET/POST/PATCH/DELETE /api/v1/projects` — UI-only in Phase 1, RAG scoping activates Phase 5).
 
 **Frontend:** Electron shell with Forge + Vite, Login/connection setup page with first-run admin creation, API client generated from OpenAPI spec, auth flow (JWT safeStorage, refresh, forced password change).
 
@@ -1125,6 +1128,13 @@ async def reindex_document(doc_id: UUID, new_content: str, session: AsyncSession
 - AC2: Paths sent as `file_references` in ChatCompletionRequest
 - AC3: Backend fetches those specific documents as additional context
 
+**US-2.7:** As a user, I want to control MCP tool availability per conversation.
+- AC1: Chat input toolbar shows MCP toggle with 3 states: Disable / Auto / Manual
+- AC2: State stored on `conversations.mcp_mode`; persists when conversation is resumed
+- AC3: Default for new conversations inherits from `user_settings.mcp_default_mode` (default: `'auto'`)
+- AC4: `mcp_mode` passed in ChatCompletionRequest; backend respects it in agent tool selection
+- AC5: Manual mode shows tool selector popup listing available MCP tools by server
+
 **Request body schema:**
 ```python
 class ChatCompletionRequest(BaseModel):
@@ -1143,6 +1153,7 @@ class ChatCompletionRequest(BaseModel):
     web_search_enabled: bool = False
     relevant_note_enabled: bool = True
     agent_enabled: bool = False
+    mcp_mode: str | None = None              # 'disable' | 'auto' | 'manual' — None = use conversation.mcp_mode
     # Special commands (set by Lexical client-side detection)
     zettel_capture: bool = False              # @zettel detected — triggers Zettel capture workflow
     access_token: str | None = None  # SSE fallback
@@ -1150,6 +1161,7 @@ class ChatCompletionRequest(BaseModel):
 
 **Backend processing flow:**
 1. Validate conversation_id belongs to current user
+1a. If `POST /api/v1/conversations` is called from the Workspace page (client sends `project_id` in the request body), set `conversations.project_id` to the active workspace's UUID. If no workspace is active or the call originates from the Chat page, `project_id` is null.
 2. Append user message to messages table (user_id denormalized)
 3. Resolve mode_id → system prompt; apply system_prompt_override if non-empty
 4. If relevant_note_enabled: ragSearch scoped by mode's rag_scope
@@ -1160,6 +1172,7 @@ class ChatCompletionRequest(BaseModel):
 8. Call LiteLLM acompletion() with streaming. If reasoning_effort is set and the model supports it (checked via model capabilities in config), pass it as a provider-specific parameter. If the model doesn't support it, ignore silently.
 9. Stream tokens via SSE, record assistant message to DB on completion
 10. If agent_enabled: run AgentRunner with tool results streamed as SSE events
+10a. MCP tool availability: check `mcp_mode` from request (or fall back to `conversations.mcp_mode`). If `disable`, no MCP tools are injected into the agent's tool list. If `auto`, all admin-enabled MCP tools are available. If `manual`, only MCP tools explicitly selected by the user in the chat input are injected.
 
 ### F-CHAT-02: Chat History CRUD
 
@@ -1296,7 +1309,7 @@ litellm.failure_callback = [log_failure]
 
 **Backend:** AgentRunner (plan-execute-observe, 22 tools), confirmation gate, client-cooperative tool protocol (captureFromClipboard with SSE round-trip), memory extraction/storage/recall, Memory Dream consolidation (4 phases, advisory lock), APScheduler, skill resolution engine (trigger matching, namespace scoping, token budgeting). Endpoints: `POST /api/v1/agent/client-response`, `POST /api/v1/agent/approve` (2 agent endpoints), all 12 Memory endpoints (CRUD + semantic search + dream + import/export), `POST /api/v1/vault/organize/undo` (requires OperationLog).
 
-**Frontend:** Agent tool banner, memory panel, confirmation modals, SSE client_request handler, Research mode wiring, Memory management tab, Skills management section in Settings (Tab 4j).
+**Frontend:** Agent tool banner, memory panel, confirmation modals, SSE client_request handler, Research mode wiring, Memory management (Customize → Memory tab), Skills management (Customize → My Skills tab).
 
 ### F-AGENT-01: Agent Runner
 
@@ -1413,7 +1426,7 @@ class OperationRecord(BaseModel):
 - AC3: Max 500 per user, 200 active (configurable)
 
 **US-4.7:** As a user, I want to manage memories (view, edit, archive, delete, import, export).
-- AC1: Searchable/sortable list in Settings Tab 4i
+- AC1: Searchable/sortable list in Customize → Memory tab
 - AC2: Inline edit re-embeds on save
 - AC3: Archive = soft delete; permanent delete requires confirmation
 - AC4: Import from JSON or markdown; export as JSON
@@ -1438,11 +1451,11 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 
 ---
 
-## 11. Phase 5 — Web Search + Projects (Weeks 9–10)
+## 11. Phase 5 — Web Search + Workspaces (Weeks 9–10)
 
-**Backend:** Web search engine (DuckDuckGo, Jina, Wikipedia free; Tavily/Brave/SerpAPI paid), CrossReferenceEngine, ProjectManager (folder/tag scoping), frontmatterQuery tool. Endpoints: `POST /api/v1/web/search`, `POST /api/v1/web/fetch` (2 web search endpoints), `GET/POST/PATCH/DELETE /api/v1/projects` (4 project endpoints).
+**Backend:** Web search engine (DuckDuckGo, Jina, Wikipedia free; Tavily/Brave/SerpAPI paid), CrossReferenceEngine, ProjectManager (folder/tag scoping — activates existing workspace definitions created in Phase 1), frontmatterQuery tool. Endpoints: `POST /api/v1/web/search`, `POST /api/v1/web/fetch` (2 web search endpoints). Project CRUD endpoints already live from Phase 1; Phase 5 wires them to RAG scoping.
 
-**Frontend:** Project switcher, project creation/edit modal, web search toggle, @web trigger, Focus mode scoping.
+**Frontend:** Workspace RAG scoping wired to existing Workspace switcher and creation/edit modal (UI shell from Phase 1), web search toggle, @web trigger, Focus mode scoping.
 
 **Quality gate:** Projects scope RAG correctly. Web search returns results and cross-references vault.
 
@@ -1454,13 +1467,13 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 - AC3: Triggered by `@web`, toggle, or Research mode
 - AC4: `POST /api/v1/web/search` and `POST /api/v1/web/fetch`
 
-### F-PROJ-01: Project Scoping (Should Have)
+### F-WORK-01: Workspace RAG Scoping (Should Have)
 
-**US-5.2:** As a user, I want projects to scope RAG to specific folders/tags.
-- AC1: Projects define: include_folders, exclude_folders, tags, system_prompt, default_model
-- AC2: Focus mode restricts RAG to active project
-- AC3: Project switcher in header
-- AC4: CRUD via /api/v1/projects
+**US-5.2:** As a user, I want workspaces to scope RAG to specific folders/tags.
+- AC1: Workspaces define: include_folders, exclude_folders, tags, system_prompt, default_model. Stored in `projects` table.
+- AC2: Focus mode restricts RAG to active workspace
+- AC3: Workspace switcher in Workspace page left pane (dropdown)
+- AC4: CRUD via /api/v1/projects (backend path unchanged)
 
 ---
 
@@ -1533,6 +1546,7 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 - User API key management with provider status
 - MCP client support: `mcp` Python SDK integration, ToolRegistry (unified built-in + MCP tools), stdio + Streamable HTTP transports, admin UI for server configuration (Tab 5h), health checks + auto-reconnection, 5 new admin endpoints
 - Obsidian export: "Export to Obsidian" buttons in editor toolbar, document list context menu, and conversation header. Electron IPC for native folder dialog + batch file writing with progress. Markdown output preserves frontmatter and wikilinks in Obsidian-compatible format.
+- Theme system: 4 options (Light / Dark / Auto / Custom) via Electron `nativeTheme.themeSource` IPC bridge. Theme stored in `electron-store` (device-specific, not synced to server). Applied in main process before window renders to prevent flash. Custom theme: user picks accent colour (replaces `--sc-secondary` globally) and background colour (replaces `--sc-color-bg`) using native `<input type="color">` elements. Custom colour values stored in `electron-store` as `theme.customAccent` and `theme.customBackground`. CSS custom properties updated at runtime via `ipcRenderer` → `ipcMain` → `webContents.executeJavaScript`.
 
 ---
 
@@ -1549,7 +1563,7 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 
 ## 15. API Contract Reference
 
-> **FOR AI AGENTS:** Implement these endpoints exactly as specified. The OpenAPI spec auto-generated from FastAPI is the runtime source of truth, but these definitions are the design spec. Total: ~99 endpoints across 14 route groups.
+> **FOR AI AGENTS:** Implement these endpoints exactly as specified. The OpenAPI spec auto-generated from FastAPI is the runtime source of truth, but these definitions are the design spec. Total: ~103 endpoints across 14 route groups.
 
 ### Auth (6 endpoints — Phase 1)
 
@@ -1559,18 +1573,20 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 | POST | `/api/v1/auth/login` | None | Returns access + refresh tokens |
 | POST | `/api/v1/auth/refresh` | None | Refresh token → new pair |
 | POST | `/api/v1/auth/change-password` | JWT | Requires current password |
-| GET | `/api/v1/auth/me` | JWT | Returns current user profile: id, username, email, role, display_name, title, created_at. Used by Tab 4h (Account) and to refresh user data after admin changes. |
-| PATCH | `/api/v1/auth/me` | JWT | Update current user's profile: email, display_name, title. Returns updated user object. Username is immutable. |
+| GET | `/api/v1/auth/me` | JWT | Returns current user profile: id, username, email, role, display_name, title, created_at. Used by User Profile Modal → Profile tab and to refresh user data after admin changes. |
+| PATCH | `/api/v1/auth/me` | JWT | Update fields on the `users` table: `email`, `display_name`, `title`. Returns updated user object. Username is immutable (used in vault paths). Bio is stored in `user_settings` JSONB as `profile_bio` — save bio via `PUT /api/v1/settings`, not this endpoint. |
+| GET | `/api/v1/auth/sessions` | JWT | List active sessions for current user. Returns array of `{id, device_info, ip_address, created_at, last_used_at}`. Used by Profile Modal → Profile tab → Active Sessions list. |
+| DELETE | `/api/v1/auth/sessions/{id}` | JWT | Revoke a specific session by ID. Cannot revoke the session making the request (returns 400). Used by Profile Modal → Profile tab → Revoke button. |
 
 ### Chat (8 endpoints — Phase 2; export endpoint deferred to Phase 7)
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | POST | `/api/v1/chat/completions` | JWT | SSE streaming with RAG + citations |
-| GET | `/api/v1/conversations` | JWT | Paginated, search, date filter |
+| GET | `/api/v1/conversations` | JWT | Paginated. Query params: `search` (text), `date_from`, `date_to`, `project_id` (UUID — filters to workspace; pass `none` to return conversations with no workspace assigned). |
 | GET | `/api/v1/conversations/{id}` | JWT | With messages |
-| POST | `/api/v1/conversations` | JWT | Create conversation |
-| PATCH | `/api/v1/conversations/{id}` | JWT | Update title, model, mode |
+| POST | `/api/v1/conversations` | JWT | Create conversation. Accepts optional `project_id` in request body — when supplied, associates the new conversation with that workspace. |
+| PATCH | `/api/v1/conversations/{id}` | JWT | Update title, model, mode, project_id. Pass `project_id: null` to remove workspace association. |
 | DELETE | `/api/v1/conversations/{id}` | JWT | Delete with confirmation logic |
 | POST | `/api/v1/conversations/{id}/regenerate` | JWT | Delete last assistant message, re-run |
 | POST | `/api/v1/conversations/{id}/export` | JWT | Export to vault as markdown. **Ships in Phase 7** — depends on vault write pipeline and Tiptap editor. Endpoint stub may exist in Phase 2 (returns 501) but full implementation deferred. |
@@ -1587,7 +1603,7 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| GET | `/api/v1/documents` | JWT | Paginated, filter by type/folder/tag |
+| GET | `/api/v1/documents` | JWT | Paginated. Query params: `note_type`, `folder`, `tag`, `project_id` (UUID — when supplied, applies the workspace's `include_folders`, `exclude_folders`, and `tags` rules server-side and returns only matching documents). Response includes `total_in_scope` count when `project_id` is supplied. |
 | GET | `/api/v1/documents/{id}` | JWT | Metadata + content |
 | PUT | `/api/v1/documents/{id}` | JWT | Write to filesystem + reindex |
 | POST | `/api/v1/documents/upload` | JWT | Import PDF, DOCX, HTML |
@@ -1708,7 +1724,7 @@ The `nodes` and `edges` arrays are in native Cytoscape.js format — the client 
 | GET | `/api/v1/memories/dream/audit` | JWT | Dream audit log |
 | POST | `/api/v1/memories/dream/trigger` | JWT | Manual trigger for self |
 
-### Projects (4 endpoints — Phase 5)
+### Projects / Workspaces (4 endpoints — Phase 1 CRUD; RAG scoping Phase 5)
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -1853,7 +1869,7 @@ data: {"type":"done","data":{"usage":{"prompt_tokens":1200,"completion_tokens":4
 
 ## 16.5. System Prompt Templates
 
-> **FOR AI AGENTS:** These are the default system prompts. Mode prompts are user-editable via Settings Tab 4d. The citation instruction block is always appended regardless of mode.
+> **FOR AI AGENTS:** These are the default system prompts. Mode prompts are user-editable via Customize → My Modes tab. The citation instruction block is always appended regardless of mode.
 
 ### Base System Prompt (prepended to all modes)
 
@@ -1974,7 +1990,7 @@ Rules for tool use:
 - **Admin recovery:** If a scheduled task needs to be inspected or removed manually, admins can query APScheduler's internal tables directly via `psql` against the application database. APScheduler's table name defaults to `apscheduler_jobs`.
 - **Candidate for future phase:** A read-only admin endpoint (`GET /api/v1/admin/scheduled-tasks`) listing active jobs with next-run times would improve observability. Not scoped for v1.0.
 
-**Why `webSearch` requires confirmation:** Web search is a read-only operation but is classified as requiring confirmation because: (1) it consumes paid API credits (Tavily, Brave, SerpAPI) or makes external network requests that may be rate-limited, and (2) the user should be aware when the agent is reaching outside the vault to the public internet. Users who find the confirmation disruptive can disable it via `agent.confirm_before_web_search` (default: true) in Settings Tab 4e.
+**Why `webSearch` requires confirmation:** Web search is a read-only operation but is classified as requiring confirmation because: (1) it consumes paid API credits (Tavily, Brave, SerpAPI) or makes external network requests that may be rate-limited, and (2) the user should be aware when the agent is reaching outside the vault to the public internet. Users who find the confirmation disruptive can disable it via `agent.confirm_before_web_search` (default: true) in Customize → AI Behaviour.
 
 ### captureFromClipboard Protocol
 
@@ -2493,6 +2509,23 @@ mcp:
 
 **User-overridable:** Everything else (RAG weights, top_k, temperature, zettelkasten, agent, mode definitions, etc.)
 
+**`user_settings` JSONB — key reference**
+
+The following keys are stored in the `user_settings.settings` JSONB column. All are optional — if absent, the server default from `settings.yaml` applies. Keys marked † were added in v1.0.5.
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `quick_phrases` † | array | `[]` | Array of `{id, title, text}`. Max 20. Managed in Customize → AI Behaviour → Quick Phrases. Rendered in chat input Quick Phrase popup. |
+| `mcp_default_mode` † | string | `"auto"` | Default MCP mode for new conversations. `'disable'` \| `'auto'` \| `'manual'`. |
+| `profile_bio` † | string | `""` | User bio text. Max 500 chars. Saves via `PUT /api/v1/settings`, not `PATCH /api/v1/auth/me`. |
+| `notification_sounds` † | boolean | `true` | Play notification sounds in the client. |
+| `show_indexing_progress` † | boolean | `true` | Show indexing progress in footer status bar. |
+| `date_format` † | string | `"YYYY-MM-DD"` | `'YYYY-MM-DD'` \| `'DD/MM/YYYY'` \| `'MM/DD/YYYY'`. |
+| `language` † | string | `"en"` | UI language. `'en'` only in v1.0. Placeholder for future i18n. |
+| `chat_history.include_timestamps` † | boolean | `false` | Include per-message timestamps in vault exports. |
+| `chat_history.project_subfolder` † | boolean | `true` | Organise exported chats into workspace subfolders. |
+| `chat_history.vault_export_folder` † | string | `"Smart Copilot"` | Folder name within vault for exported conversations. |
+
 ---
 
 ## 23. Docker Deployment
@@ -2744,7 +2777,7 @@ client/
     │   ├── main.ts, tray.ts, windows.ts,
     │   ├── global-shortcut.ts, auto-launch.ts, ipc.ts,
     │   ├── export.ts                # Obsidian export IPC: folder dialog, batch write, progress
-    │   ├── local-store.ts           # electron-store wrapper for client-only settings
+    │   ├── local-store.ts           # electron-store wrapper for client-only settings (Obsidian vault path, export folders, theme, workspace UI state)
     ├── renderer/
     │   ├── index.html, main.tsx, App.tsx
     │   ├── api/
@@ -2775,26 +2808,46 @@ client/
         ├── types.ts, constants.ts
 ```
 
+**`local-store.ts` — electron-store key inventory**
+
+All keys are client-only and device-specific. Never synced to the server.
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `obsidian.vaultPath` | string | `""` | Absolute path to local Obsidian vault. Set via Electron folder dialog. |
+| `obsidian.notesSubfolder` | string | `"Smart Copilot/Notes"` | Export subfolder for notes. |
+| `obsidian.conversationsSubfolder` | string | `"Smart Copilot/Conversations"` | Export subfolder for conversations. |
+| `workspace.screenState` | string | `"default"` | Last active WorkspaceScreenState: `'default'` \| `'focus-chat'` \| `'focus-editor'` \| `'utility-sidebar'` \| `'editor-plus-sidebar'` \| `'editor-empty'` \| `'left-collapsed'` |
+| `workspace.activeWorkspaceId` | string \| null | `null` | UUID of last active workspace. Restored on app launch. |
+| `workspace.vaultPaneWidth` | number | `288` | Workspace left pane width in pixels. Persists drag-resize. |
+| `workspace.editorPaneWidth` | number | `450` | Workspace editor panel width in pixels. Persists drag-resize. |
+| `theme.mode` | string | `"auto"` | `'light'` \| `'dark'` \| `'auto'` \| `'custom'`. Phase 7. |
+| `theme.customAccent` | string | `"#4a4bd7"` | Custom accent colour hex. Replaces `--sc-secondary` globally. Phase 7. |
+| `theme.customBackground` | string | `"#FAF9F7"` | Custom background colour hex. Replaces `--sc-color-bg`. Phase 7. |
+
 ---
 
 ## 26. UI Pages & Navigation
 
-> **Frontend design authority:** `ui-spec.md` is the canonical reference for all UI implementation decisions: design tokens, component specifications, layout patterns, screen specs, navigation logic, and platform abstraction. This section defines the page inventory, settings field contracts, and API bindings. Where this section and the UI spec conflict, **the UI spec wins for visual/interaction decisions; this section wins for data contracts and API bindings.**
+> **Frontend design authority:** `spec-ui-v1.md` is the canonical reference for all UI implementation decisions: design tokens, component specifications, layout patterns, screen specs, navigation logic, and platform abstraction. This section defines the page inventory, settings field contracts, and API bindings. Where this section and the UI spec conflict, **the UI spec wins for visual/interaction decisions; this section wins for data contracts and API bindings.**
 
 > **Web client:** The React renderer is served from both Electron and FastAPI (Decision 27). All pages in this section are available on both platforms unless marked `(Electron only)`.
 
 ### Page Map
 
-| # | Page | Access | Phase |
+| # | Page / Surface | Access | Phase |
 |---|---|---|---|
-| 1 | Login / Connection Setup | All | 1 |
-| 2 | Main Chat View (three-panel: sidebar + chat + editor) | All | 2–3 |
-| 3 | Floating Surfaces (history, mode, model, settings popovers) | All | 2 |
-| 4 | Settings (10 tabs) | All | 2–7 |
-| 5 | Admin Dashboard (8 tabs) | Admin | 6–7 |
-| 6a | User Dashboard (3 tabs: Usage, Vault Health, System Status) | All | 6 |
-| 7 | Quick Chat Window (tray) | All | 7 |
-| 8 | Modals (split, preview, organize, confirm, diff) | All | 3–7 |
+| 1 | Login — split layout, dark branding left / white form right. First-run variant shows "Create Admin Account" form triggered by `GET /health` returning `setup_required: true`. No sign-up link on standard login. | All | 1 |
+| 2 | Home — welcome header, 4 stat cards, Recent Activity, Intelligence row (Link Suggestions + Memory Snapshot), Quick Actions, Usage & Performance collapsible, Vault Health collapsible | All | 1+ |
+| 3 | Chat — left vault sidebar (220px, collapsed by default, MY VAULT + SHARED accordions) + chat panel + right utility sidebar (Sources / Suggested Tasks / Deep Dive, closed by default) | All | 2–3 |
+| 4 | Workspace — left pane (288px, workspace dropdown + IN SCOPE + MY VAULT + SHARED) + chat + editor panel. 7 screen-state variants. | All | 1+ |
+| 5 | Customize Workspace — left-rail nav (200px), 6 tabs: Workspaces, AI Behaviour, My Modes, My Skills, API Keys, Memory | All | 1+ |
+| 6 | Chat History — workspace filter dropdown, dismissible filter pill, workspace pill on each card | All | 1+ |
+| 7 | System Settings — left-rail nav (200px), 9 tabs: Models & Inference, RAG & Knowledge, Agent Behaviour, Web Search, Shared API Keys (admin), MCP Servers (admin), Users (admin), System Health, Auth & Advanced (admin) | All / Admin | 1+ |
+| 8 | Admin Dashboard — 8 tabs: Overview, LLM Usage, Storage, Shared API Keys, Users, Memory Dream, System Health, MCP Servers | Admin only | 6–7 |
+| 9 | Quick Chat Window (tray) | All | 7 (Electron) |
+| 10 | Modals — split, preview, organize, confirm, diff, Workspace Chat History | All | 3–7 |
+| — | User Profile Modal — opens from header avatar. 3 tabs: Profile, Appearance, AI & Chat | All | 1+ |
 
 ### Page 2 — Main Chat View Layout
 
@@ -2843,30 +2896,208 @@ client/
 
 **Search bar:** At top of sidebar, filters both tree and list views. Debounced 300ms. In tree view, search expands matching paths and dims non-matching nodes. In list view, search filters the table.
 
-### Settings Tabs
+### Page 4 — Workspace
 
-Settings uses a secondary left-rail tab navigation (`SettingsTabNav`, 200px). Tabs in order:
+Three-zone layout: left pane (288px, collapsible) + chat panel (flex) + editor panel (flex, opens on demand).
 
-```
-[ Profile ] [ Appearance ] [ Model & Chat ] [ RAG ] [ Modes ] [ Features ] [ API Keys ] [ Memory ] [ Skills ] [ Advanced ] [ Help & Support ] [ About ]
-```
+#### Workspace Left Pane
 
-| Tab | Label | Phase | Notes |
+**Workspace dropdown section** (top of left pane, above divider):
+- Section label: "WORKSPACES" (overline style) + "+ New" button (right-aligned)
+- Dropdown button: shows active workspace name + chevron-down icon + edit (✎) icon. Clicking the name area opens the dropdown; clicking ✎ opens the Edit modal for the active workspace.
+- Dropdown menu when open: list of workspaces with ✓ on active, 1px divider, "No workspace" option with ✓ if none active, 1px divider, "+ New workspace" action.
+- Conversation count: muted text below dropdown — "N conversations  View all →". Clicking "View all →" opens the Workspace Chat History Modal.
+
+**IN SCOPE section** (below dropdown, above MY VAULT accordion):
+
+| Element | Spec |
+|---|---|
+| Section header | "IN SCOPE ({n} notes)" — count from `GET /api/v1/documents?project_id={id}` `total_in_scope` |
+| Default state | Expanded if ≤ 20 notes; collapsed if > 20 notes |
+| Search icon | Opens WorkspaceSearchModal |
+| Note rows | Emoji icon + filename. Clickable — opens note in editor panel. Does NOT send note as chat context automatically; use @ command in chat input to reference a note as context. |
+| Scope | Private vault notes only (v1.0). Shared vault notes excluded. |
+| API | `GET /api/v1/documents?project_id={id}` — backend applies workspace's `include_folders`, `exclude_folders`, `tags` server-side |
+| Empty state | "No notes in scope. Edit workspace settings to add folders or tags." + "Edit Workspace" button |
+
+**Vault tree** (below 1px divider):
+- MY VAULT accordion (expanded by default) — full private vault tree regardless of workspace scope
+- SHARED accordion (collapsed by default) — team shared vault
+
+#### Workspace SubToolbar
+
+Left group: collapse-pane button, back/forward nav buttons.
+Breadcrumb: workspace name as clickable indigo link (opens Workspace Chat History Modal) › conversation title as plain text.
+Right group (spacer then): Focus Chat toggle, Focus Editor toggle, utility sidebar toggle (panel-right icon), New Thread button.
+
+#### Workspace Screen States
+
+7 variants stored in `electron-store` as `workspace.screenState`. Default: `'default'`.
+
+| State | Chat width | Editor width | Notes |
 |---|---|---|---|
-| 4-profile | Profile | 1 | display_name, username (read-only), email, title, bio, avatar |
-| 4a | Appearance | 1 | Theme (light only v1), language |
-| 4b | Model & Chat | 2 | AI persona name, default mode, default model, temperature, etc. |
-| 4c | RAG | 2 | Embedding info, retrieval weights |
-| 4d | Modes | 2 | System prompt editors per mode |
-| 4e | Features | 4 | Memory, agent confirmation toggles |
-| 4f | API Keys | 1 | User-level key management |
-| 4g | Advanced | 3 | Vault path, date format, autosave interval |
-| 4h | Memory | 4 | Memory list, import/export, Dream status |
-| 4j | Skills | 4 | Skill list, create/edit/override |
-| 4-help | Help & Support | 1 | Documentation links, floating help FAB |
-| 4-about | About | 1 | Version, licence info |
+| `default` | 50% | 50% | Editor closed by default; opens when note clicked or agent fires openInEditor |
+| `focus-chat` | 65% | 35% | Chat-dominant split |
+| `focus-editor` | 35% | 65% | Editor-dominant split |
+| `utility-sidebar` | full width | closed | Utility sidebar (Sources/Tasks/Deep Dive) open, no editor |
+| `editor-plus-sidebar` | reduced | open | Both editor and utility sidebar open — shows dismissible amber banner: "For the best experience, collapse a panel to give more space" |
+| `editor-empty` | full width | open (empty) | Editor panel open but no file loaded. Shows empty state: document icon + "No document open" + "Click a note from the vault to edit, or ask the AI to draft something" + "+ New note" button |
+| `left-collapsed` | full width | — | Left pane hidden; thin expand button shown at left edge |
 
-> **General settings** (notification sounds, indexing progress, Obsidian path, subfolder config) are split between **Appearance** (display) and **Advanced** (vault/editor) tabs per the UI spec.
+#### Workspace Chat History Modal
+
+| Element | Spec |
+|---|---|
+| Trigger | Workspace name link in SubToolbar breadcrumb OR "View all →" link under workspace dropdown |
+| Width | 600px |
+| Max height | 70vh with internal scroll |
+| Header | "{Workspace Name} — Chat History" (Space Grotesk extrabold 20px) + conversation count ("N conversations") + ✕ close button (absolute top-right) |
+| Conversation list | Same card style as Chat History screen (Page 6). Each card: title, date badge, 2-line preview, workspace pill. Cards are clickable — opens that conversation. |
+| Footer | "View all in Chat History →" link — navigates to Chat History screen (Page 6) with workspace filter pre-applied. |
+| Empty state | Document icon + "No conversations yet in this workspace." heading + "Start a new thread to begin." subtitle + "New Thread" button — closes modal and opens a new conversation on the Workspace page with the active workspace's `project_id`. |
+| API | `GET /api/v1/conversations?project_id={id}&limit=20` |
+
+#### Workspace Switching Behaviour
+
+On workspace switch (user selects different workspace from dropdown):
+- If editor has unsaved content (dirty indicator ● showing): workspace switch does NOT proceed. An amber inline banner appears at the top of the chat panel:
+  - Text: "You have unsaved changes in the editor."
+  - "Save and switch" button — calls `PUT /api/v1/documents/{id}`, then completes switch
+  - "Discard and switch" button — discards changes, completes switch
+  - "Cancel" button — dismisses banner, keeps current workspace active
+  - Banner is dismissible with ✕ (equivalent to Cancel). This is an inline banner, NOT a blocking modal.
+- After switch (or if no unsaved changes): chat panel loads most recent conversation for the new workspace (empty state if none); editor panel closes if open note is outside new workspace scope; RAG scope updates to new `project_id`.
+
+### Settings Architecture — Three Surfaces
+
+Settings and personalisation are split across three distinct surfaces. The old flat Settings page (Page 4) is dissolved.
+
+#### Surface 1 — User Profile Modal
+Triggered by: clicking the user avatar in the top header bar.
+Width: 560px modal. Layout: left-rail tab nav (192px) + content area.
+3 tabs:
+
+**Profile tab**
+| Field | Type | Storage | Notes |
+|---|---|---|---|
+| Avatar | image upload | server | 128×128px, rounded-2xl. Hover reveals camera button. `PATCH /api/v1/auth/me/avatar` (Phase 3+). |
+| Display Name | text input | users table | Max 80 chars. `PATCH /api/v1/auth/me`. |
+| Username | read-only | users table | Immutable — used in vault folder paths. |
+| Email | text input | users table | `PATCH /api/v1/auth/me`. |
+| Title | text input | users table | e.g. "Editorial Director". Max 100 chars. `PATCH /api/v1/auth/me`. |
+| Bio | textarea | user_settings | `profile_bio` key. Saves via `PUT /api/v1/settings`. |
+| Change Password | button | — | Opens dialog. `POST /api/v1/auth/change-password`. |
+| Active Sessions | list | — | Device/browser + timestamp + Revoke. `GET /api/v1/auth/sessions` / `DELETE /api/v1/auth/sessions/{id}`. |
+| Role badge | read-only | — | "Admin" or "Member". |
+| Account created | read-only | — | From `users.created_at`. |
+
+**Appearance tab**
+| Field | Storage | Notes |
+|---|---|---|
+| Theme | electron-store | Light / Dark / Auto / Custom. 4 selector cards. Phase 7. |
+| Language | user_settings | English only in v1 — placeholder for i18n. |
+| Notification sounds | user_settings | Toggle. |
+| Show indexing progress in status bar | user_settings | Toggle. |
+| Date format | user_settings | YYYY-MM-DD / DD/MM/YYYY / MM/DD/YYYY. |
+
+**AI & Chat tab**
+| Field | Storage | Notes |
+|---|---|---|
+| AI Persona Name | user_settings | What the assistant is called in chat. |
+| Default Chat Mode | user_settings | Ask / Write / Research / Focus. |
+| Default Chat Model | user_settings | From available models via `GET /api/v1/models`. |
+| Vision Model | user_settings | Filtered to vision-capable models. |
+| Temperature | user_settings | Slider 0–2, default 0.7. |
+| Max Tokens | user_settings | Number, default 4096. |
+| Reasoning Effort | user_settings | Low / Medium / High. Model-dependent. |
+| Chat export: include timestamps | user_settings | `chat_history.include_timestamps`. Toggle, default off. |
+| Chat export: project subfolders | user_settings | `chat_history.project_subfolder`. Toggle, default on. |
+| Chat export: folder name | user_settings | `chat_history.vault_export_folder`. Text, default "Smart Copilot". |
+| Obsidian vault path | electron-store | Client-only. Set via Electron folder dialog. Device-specific, not synced. |
+
+Sign Out button in sidebar footer. Calls logout and redirects to Login.
+
+---
+
+#### Surface 2 — Customize Workspace (Page 5)
+Triggered by: sidebar nav icon.
+Layout: left-rail tab nav (200px) + content area. Full page.
+6 tabs:
+
+**Workspaces tab**
+Workspace cards grid. Each card: name, note count, health score %, last active date, Activate / Active button, Edit (pencil) and Delete (trash) hover actions.
+Create/Edit modal fields: Name (required), Description, Include Folders (text list), Exclude Folders (text list), Retrieval Tags (comma-separated), System Prompt Override (textarea, monospace), Default Model (select from `GET /api/v1/models`), live "N notes in scope" count.
+API: `GET/POST/PATCH/DELETE /api/v1/projects`. (Note: backend endpoint and table use "projects"; UI label is "Workspaces" throughout.)
+
+**AI Behaviour tab**
+| Group | Field | Storage | Default | Notes |
+|---|---|---|---|---|
+| **Zettelkasten** | | | | |
+| | Zettel ID format | user_settings | timestamp | Toggle: timestamp vs random alphanumeric. Separator character (-, _, none). Affects new notes only — no retroactive rename. `zettelkasten.id_format.use_timestamp`, `zettelkasten.id_format.separator`. |
+| | Auto-offer note splitting | user_settings | on | `zettelkasten.splitter.auto_offer_split`. |
+| | Min word count for split offer | user_settings | 1000 | `zettelkasten.splitter.min_word_count`. |
+| | Original note handling after split | user_settings | keep | keep / archive / ask. `zettelkasten.splitter.original_note_handling`. |
+| | Link suggestion confidence threshold | user_settings | 0.7 | `zettelkasten.link_suggestions.min_confidence`. Range 0–1. |
+| | Link suggestion max count | user_settings | 10 | `zettelkasten.link_suggestions.max_suggestions`. Range 1–50. |
+| **RAG** | | | | |
+| | Contextual enrichment | user_settings | on | `rag.contextual_enrichment`. |
+| | Top-K results | user_settings | 10 | `rag.top_k`. Range 1–50. |
+| | Vector weight | user_settings | 0.5 | `rag.vector_weight`. Must sum to 1.0 with BM25 + Wikilink. |
+| | BM25 weight | user_settings | 0.3 | `rag.bm25_weight`. |
+| | Wikilink weight | user_settings | 0.2 | `rag.wikilink_weight`. |
+| **Agent** | | | | |
+| | Confirm before file write | user_settings | on | `agent.confirm_before_write`. |
+| | Confirm before note split | user_settings | on | `agent.confirm_before_split`. |
+| | Confirm before vault organize | user_settings | on | `agent.confirm_before_organize`. |
+| | Confirm before web search | user_settings | on | `agent.confirm_before_web_search`. |
+| | Agent max tool calls per turn | user_settings | 10 | `agent.max_tool_calls_per_turn`. Range 1–25. |
+| | Proactive agent mode | user_settings | off | `agent.proactive_mode`. Requires tray agent (Phase 7). |
+| **Web Search** | | | | |
+| | Max results | user_settings | 5 | `web_search.max_results`. Range 1–20. |
+| | Cross-reference vault | user_settings | on | `web_search.cross_reference_vault`. |
+| | Wikipedia auto-lookup | user_settings | on | `web_search.wikipedia_lookup`. |
+| **Quick Phrases** | | | | |
+| | Phrase list | user_settings | [] | `quick_phrases` key. Array of `{title: string, text: string}`. Max 20 phrases. Add/Edit/Delete inline. Edit opens a small modal: Title field + Text textarea + Save/Cancel. Phrases appear in chat input Quick Phrase popup (toolbar icon). |
+| **Cost metric** | | | | |
+| | Cost by model this month | read-only | — | Card showing breakdown. From `GET /api/v1/usage/by-model`. |
+
+**My Modes tab**
+Reorderable list (drag handle). Built-in modes (Ask, Write, Research, Focus) + custom modes. Per-mode Edit dialog: name, system prompt, RAG scope, web search default toggle, agent tools toggle. First 5 pinned modes appear in chat composer picker. Built-in modes show "Reset to default" when modified; cannot be deleted. Custom modes can be deleted with confirmation.
+API: `GET/PUT /api/v1/settings/modes`.
+
+**My Skills tab**
+Private skills list — columns: Title, Triggers (pills), Priority, Enabled toggle. Row actions: Edit (opens in Tiptap editor panel), Duplicate, Delete. "+ New Skill" button creates skill file with template frontmatter.
+System Skills section (read-only for non-admins) — same columns. Non-admin row action: Override (copies to private namespace with higher priority).
+Skill Token Budget metric: "Using {N} / {max} tokens across {count} active skills."
+API: `GET /api/v1/documents?note_type=skill&namespace=private` and `GET /api/v1/documents?note_type=skill&namespace=shared`.
+
+**API Keys tab**
+Per-provider rows: provider name, key hint or "Not set", status badge ("Using your key ✅" / "Using shared key 🔵" / "No key ⚠️"), Set / Test / Remove actions. Set opens modal with password input.
+Local LLM endpoints shown as read-only ("Configured by your admin").
+API: `GET/POST/DELETE/POST-test /api/v1/settings/api-keys`.
+
+**Memory tab**
+Active memory count metric ("142 / 500 active memories"). Dream status card: last run, sessions since, next estimate, "Run Dream Now" button. Memory list: searchable/sortable table, columns Content (truncated), Source (conversation link), Created, Last Recalled, Recall Count. Row actions: Edit (inline, re-embeds on save), Archive (soft delete), Hard Delete (requires `?confirm=true`). Import/Export buttons.
+API: all 12 `/api/v1/memories/*` endpoints.
+
+---
+
+#### Surface 3 — System Settings (Page 7)
+Triggered by: sidebar nav icon (Settings gear, bottom of rail).
+Layout: left-rail tab nav (200px) + content area. Full page.
+9 tabs. Permission key: no marker = all users read/write; 🔒 = standard users see tab but fields are read-only; (hidden) = admin only, tab not rendered for standard users.
+
+| Tab | Access | Phase | Key contents |
+|---|---|---|---|
+| Models & Inference | 🔒 read-only for users | 2 | Model table (name, provider, capabilities, status), Local LLM endpoints (Ollama, LM Studio), Dream model selector, Embedding model (read-only display), Embedding Migration Status card, Team Cost by Model (admin only) |
+| RAG & Knowledge | 🔒 read-only for users | 2 | System-default RAG weights, top-K, contextual enrichment toggle, chunking config (chunk size, overlap, min chunk, boundary respect), Folder Classification Rules (fleeting/project folder paths, infer-from-folder toggle), index stats |
+| Agent Behaviour | 🔒 read-only for users | 4 | System-default confirmation gates, max tool calls ceiling, skill token budget ceiling, skill cache TTL |
+| Web Search | 🔒 read-only for users | 5 | Provider table (free always-available: DuckDuckGo, Wikipedia, Jina; paid optional: Tavily, Brave, SerpAPI), system defaults (max results, cross-reference vault, Wikipedia lookup), web search call stats (admin only) |
+| Shared API Keys | (hidden) admin only | 1 | Shared provider keys table (provider, key hint, status, last tested, Edit/Delete/Test actions), Local LLM endpoint management, Cost on Shared Keys metric |
+| MCP Servers | (hidden) admin only | 7 | MCP Master Enable toggle, server table (name, type, status, tool count, Edit/Delete/Enable actions), Discovered Tools list, Connection Log terminal |
+| Users | (hidden) admin only | 1 | User table (username, email, role badge, docs count, cost 30d, Edit/Reset Password/Delete actions), Create User button, Active Users metric, Top Users by Cost |
+| System Health | All users (read-only) | 1 | Index status + Force Reindex (admin), PostgreSQL connections + disk (admin), Watcher status (admin), Rate Limit config (admin), Backup status (admin). **Help & Support section**: documentation link, changelog, keyboard shortcuts reference. **About section**: app version (from build constant), backend version, licence info. |
+| Auth & Advanced | (hidden) admin only | 1 | Allow user registration toggle, JWT access token expiry (min), JWT refresh token expiry (days), Max conversations per user, Vault root path (requires server restart), Dream Schedule status |
 
 ### Admin Dashboard Tabs
 ```
@@ -2874,16 +3105,32 @@ Settings uses a secondary left-rail tab navigation (`SettingsTabNav`, 200px). Ta
 ```
 
 ### Navigation by Role
-```
-Standard user:
-  ⋯ Panel Options → Dashboard (Page 6a)
-  ⋯ Panel Options → Settings (Page 4)
 
-Admin user:
-  ⋯ Panel Options → Dashboard (Page 6a)
-  ⋯ Panel Options → Admin (Page 5)
-  ⋯ Panel Options → Settings (Page 4)
-```
+Standard user sees in sidebar nav:
+  Home (Page 2)
+  Chat (Page 3)
+  Workspace (Page 4)
+  Customize (Page 5)
+  Chat History (Page 6)
+  Settings → System Settings (Page 7) — read-only for admin-only tabs
+  [Admin Dashboard hidden entirely]
+
+Admin user sees in sidebar nav:
+  Home (Page 2)
+  Chat (Page 3)
+  Workspace (Page 4)
+  Customize (Page 5)
+  Chat History (Page 6)
+  Settings → System Settings (Page 7) — full edit access to all tabs
+  Admin Dashboard (Page 8) — visible to admin only
+
+Both roles access via header avatar click:
+  User Profile Modal (Profile / Appearance / AI & Chat tabs)
+
+Web-unavailable (Electron only):
+  Quick Chat Window (Page 9 — tray)
+  Obsidian Export (within Workspace editor toolbar)
+  Global hotkeys, native file dialogs, auto-updater
 
 ### Floating Surface Contents
 
@@ -2946,178 +3193,6 @@ tags:
 **Filename sanitization:** Strip `\/:*?"<>|#^[]` characters, collapse whitespace, limit to 200 characters. Preserve spaces (Obsidian handles them natively).
 
 **IPC architecture:** All filesystem operations execute in the Electron main process via `ipcMain.handle`. The renderer calls `window.electronAPI.exportMarkdownFiles(destFolder, files)`. Main process validates paths (prevent traversal), creates directories recursively, writes files, and reports progress via `webContents.send('export:progress', {current, total, currentFile})`. Path traversal protection: `path.resolve(fullPath).startsWith(path.resolve(destFolder))` — reject if false.
-
-### Settings Tab Field Specifications
-
-#### Tab 4a — General
-
-| Setting | Type | Default | Notes |
-|---|---|---|---|
-| Theme | dropdown | `system` | Options: `light`, `dark`, `system`. Stored in `user_settings` (synced across devices). |
-| Language | dropdown | `en` | Display language. English only for v1.0; placeholder for future i18n. Read-only for now. Stored in `user_settings`. |
-| Notification sounds | toggle | on | Play sound on system notifications. Persisted locally via `electron-store` (client-only — no server sync). |
-| Show indexing progress in status bar | toggle | on | Persisted locally via `electron-store` (client-only). |
-| Default new note location | text input | `/` | Relative path within user's vault. Where `vaultWrite` and Zettel capture create notes when no specific path is given. |
-| Date format | dropdown | `YYYY-MM-DD` | Options: `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`. Used in frontmatter `created` field and vault export filenames. |
-| Confirm before deleting conversations | toggle | on | Show warning modal before deleting unsaved conversations |
-| End-of-chat save prompt | toggle | off | When enabled and conversation not saved, shows `[Save to Vault] [Not Now] [Never]` on chat end (see Decision 14) |
-| Obsidian vault path | text input + Browse button | *(empty)* | Local filesystem path to user's Obsidian vault (e.g., `~/Documents/Obsidian/`). Browse button opens native folder picker via `dialog.showOpenDialog`. When empty, all "Export to Obsidian" buttons are hidden throughout the UI. Path validated on set: must be an existing directory. Persisted locally via `electron-store` (not sent to server — this is a client-only setting). |
-| Export subfolder for notes | text input | `Smart Copilot/Notes` | Subfolder within the Obsidian vault where exported notes are placed. Created automatically on first export. |
-| Export subfolder for conversations | text input | `Smart Copilot/Conversations` | Subfolder for exported conversations. |
-
-#### Tab 4b — Model & Chat
-
-| Setting | Type | Default | Notes |
-|---|---|---|---|
-| AI persona name | text input | `Smart Copilot` | The name displayed as the AI's label in chat messages (e.g. "Curator AI", "Research Assistant"). Stored in `user_settings` as `ai_persona_name`. Max 40 characters. Applied client-side only — does not affect system prompts or model behaviour. |
-| Default chat mode | dropdown | `Chat` | Options: `Chat`, `Research`, `Agent`. The mode pre-selected when starting a new conversation. Stored in `user_settings` as `default_chat_mode`. |
-| Default chat model | dropdown | from server config | Populated from `GET /api/v1/models`. Sticky — overrides the server default for this user. |
-| Default temperature | slider | 0.7 | 0.0–2.0 |
-| Default max tokens | number | 4096 | Model-specific upper bound shown |
-| Default top-P | slider | 1.0 | 0.0–1.0 |
-| Default frequency penalty | slider | 0.0 | 0.0–2.0 |
-| Default reasoning effort | dropdown | `medium` | Options: `low`, `medium`, `high`. Only applied to models that support it; ignored silently for others. |
-| Vision model | dropdown | from server config | Used for image understanding. Filtered to models with `vision` capability. |
-
-These defaults apply to new conversations. Per-conversation overrides are set via the Chat Settings Popover.
-
-#### Tab 4c — RAG
-
-| Setting | Type | Default | Notes |
-|---|---|---|---|
-| Current Embedding Model | text (read-only) | from server | "openai/text-embedding-3-small (1536 dim)" — admin changes this in Admin Dashboard |
-| Contextual Enrichment | toggle | on | |
-| Top K results | number | 10 | |
-| Vector weight | slider | 0.5 | Weights must sum to 1.0 |
-| BM25 weight | slider | 0.3 | |
-| Wikilink weight | slider | 0.2 | |
-| Fleeting note expiry | number | 30 days | |
-| Infer type from folder | toggle | on | |
-| Fleeting folders | text list | /inbox/, /fleeting/ | |
-| Project folders | text list | /projects/, /journal/ | |
-
-#### Tab 4d — Modes
-
-| Element | Type | Notes |
-|---|---|---|
-| Mode list | reorderable list | Shows all modes (built-in + custom). Drag to reorder. First 5 appear in composer picker; rest overflow to "More modes". |
-| — Mode row | row | Label · RAG scope badge · Web/Agent icons · [Edit] [Pin/Unpin] |
-| — Built-in indicator | badge | Built-in modes show `✎` when their system prompt has been modified from default |
-| **Edit mode dialog** | modal | Opens on [Edit] or [+ New Mode] |
-| — Mode label | text input | Required. Max 20 characters. |
-| — System prompt | textarea | The prompt sent to the LLM when this mode is active. Built-in modes show "Reset to default" button when modified. |
-| — RAG scope | dropdown | Options: `vault` (private + shared), `project` (active project only), `note` (current note in editor), `vault+web` (vault + web search). |
-| — Web search default | toggle | off | Initial state of the web search toggle when this mode is selected. User can still override. |
-| — Agent tools | toggle | off | When on, all 22 agent tools available. When off, agent loop not activated (pipeline RAG still runs). |
-| + New Mode | button | Opens Edit mode dialog with empty fields. |
-| Delete custom mode | row action | Only on custom modes. Requires confirmation. Built-in modes cannot be deleted. |
-
-Source: Decision 12. The 4 built-in modes (Ask, Write, Research, Focus) are pre-configured and resettable to defaults. Custom modes are stored in `user_settings` via `GET/PUT /api/v1/settings/modes`.
-
-#### Tab 4e — Features
-
-| Setting | Type | Default | Notes |
-|---|---|---|---|
-| Auto-extract memories from conversations | toggle | on | Maps to `memory.auto_extract` |
-| Agent confirmation: before file write | toggle | on | Maps to `agent.confirm_before_write` |
-| Agent confirmation: before note split | toggle | on | Maps to `agent.confirm_before_split` |
-| Agent confirmation: before vault organize | toggle | on | Maps to `agent.confirm_before_organize` |
-| Agent confirmation: before web search | toggle | on | Maps to `agent.confirm_before_web_search`. When off, agent can search the web without asking. |
-| Agent max tool calls per turn | number | 10 | Maps to `agent.max_tool_calls_per_turn`. Range: 1–25. |
-| Web search: max results | number | 5 | Maps to `web_search.max_results`. Range: 1–20. |
-| Web search: cross-reference vault | toggle | on | Maps to `web_search.cross_reference_vault`. When on, web results are compared against vault notes. |
-| Web search: Wikipedia lookup | toggle | on | Maps to `web_search.wikipedia_lookup`. Include Wikipedia as a free search source. |
-| Auto-offer note splitting | toggle | on | Maps to `zettelkasten.splitter.auto_offer_split`. Offer to split notes exceeding min word count. |
-| Min word count for split offer | number | 1000 | Maps to `zettelkasten.splitter.min_word_count` |
-| Original note handling after split | dropdown | `keep` | Options: `keep` (as literature note), `archive`, `ask` (always prompt). Maps to `zettelkasten.splitter.original_note_handling`. |
-
-#### Tab 4f — API Keys (user's own)
-
-| Element | Type | Notes |
-|---|---|---|
-| Info text | text | "Optionally provide your own API keys. If not set, shared keys configured by your admin will be used. Your key takes priority when set." |
-| Provider list | rows | One row per provider: OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter |
-| — Provider row | row | Provider name · Key hint or "Not set" · Status ("Using your key ✅" / "Using shared key" / "No key ❌") · [Set Key] [Test] [Remove] |
-| — Set Key dialog | modal | Password input + Save button |
-| Local LLM info | text (read-only) | "Local LLM endpoints (Ollama, LM Studio) are configured by your admin." Lists available local endpoints from `settings.yaml` if any are configured, or "None configured" if empty. Not editable by users — this is a server-only setting. |
-
-#### Tab 4g — Advanced
-
-| Setting | Type | Default | Notes |
-|---|---|---|---|
-| Zettel ID format: use timestamp | toggle | on | Maps to `zettelkasten.id_format.use_timestamp`. When off, uses random alphanumeric ID. |
-| Zettel ID separator | text input | (empty) | Maps to `zettelkasten.id_format.separator`. Inserted between date components in timestamp IDs (e.g., `-` produces `2025-02-14-1530`). |
-| Chat export: include timestamps | toggle | off | Maps to `chat_history.include_timestamps`. Include per-message timestamps in vault export files. |
-| Chat export: project subfolders | toggle | on | Maps to `chat_history.project_subfolder`. Organize exported chats into subfolders by project. |
-| Chat export: folder name | text input | `Smart Copilot` | Maps to `chat_history.vault_export_folder`. Folder name within user's vault for exported conversations. |
-| Link suggestion min confidence | slider | 0.7 | Maps to `zettelkasten.link_suggestions.min_confidence`. Range: 0.0–1.0. |
-| Link suggestion max count | number | 10 | Maps to `zettelkasten.link_suggestions.max_suggestions`. Range: 1–50. |
-| Proactive agent mode | toggle | off | Maps to `agent.proactive_mode`. When on, background agent runs scheduled vault health checks and cleanup suggestions. Requires tray agent (Phase 7). |
-| Reset all settings to defaults | button | — | Clears all user overrides from `user_settings`. Requires confirmation dialog: "This will reset all settings to server defaults. Your API keys, modes, and projects will not be affected." |
-
-#### Tab 4-profile — Profile
-
-| Setting | Type | Notes |
-|---|---|---|
-| Avatar | image upload | 128×128px display, `rounded-2xl`. Hover reveals camera button. Upload via `PATCH /api/v1/auth/me/avatar` (Phase 3+). Placeholder initials shown until set. |
-| Display Name | text input | Maps to `users.display_name`. Shown in UI header and chat. Max 80 chars. Saves via `PATCH /api/v1/auth/me`. |
-| Username | text (read-only) | Maps to `users.username`. Immutable — used in vault folder paths. Caption: "(Cannot be changed)". |
-| Email | text input | Maps to `users.email`. Saves via `PATCH /api/v1/auth/me`. |
-| Title | text input | Maps to `users.title`. Optional free-text (e.g. "Editorial Director"). Max 100 chars. Shown in header alongside role label. Saves via `PATCH /api/v1/auth/me`. |
-| Bio | textarea (3 rows) | Optional user bio. Stored in `user_settings` as `profile_bio`. |
-| Change Password | button | Opens dialog: current password + new password + confirm. Calls `POST /api/v1/auth/change-password`. |
-| Role | text (read-only) | Displays "Admin" or "Member" (not raw DB value "user"). |
-| Account created | text (read-only) | Formatted date from `users.created_at`. |
-| Active sessions | list | JWT sessions with device/browser info + created timestamp + "Revoke" button. From `GET /api/v1/auth/sessions`. Allows multi-device session management. |
-
-Source: Decision 21 (password reset flow, role definitions). Profile data loaded via `GET /api/v1/auth/me` (see Section 15, Auth endpoints).
-
-#### Tab 4h — Account
-
-> **Deprecated tab label.** This tab is now "Profile" (Tab 4-profile above). The `Tab 4h` label remains in older code references and means the same thing. New code should use the route `/settings/profile`.
-
-#### Tab 4i — Memory
-
-| Element | Type | Notes |
-|---|---|---|
-| Active Memories | metric | "142 / 500 active memories" |
-| Memory Dream status | card | Last run, sessions since, next estimate. "Run Dream now" button (calls `POST /api/v1/memories/dream/trigger`). |
-| **Memory list** | searchable table | Columns: Content (truncated), Source (conversation link), Created, Last Recalled, Recall Count |
-| — Search | text input | Filters by content text |
-| — Sort | dropdown | By: newest, oldest, most recalled, least recalled |
-| — Edit | row action | Opens inline editor — user can rewrite memory content. Re-embeds on save (`PUT /api/v1/memories/{id}`). |
-| — Archive | row action | Soft-delete (`DELETE /api/v1/memories/{id}`). Can be restored from Archived tab. |
-| — Delete permanently | row action | Hard-delete with confirmation (`DELETE /api/v1/memories/{id}/permanent?confirm=true`). "This cannot be undone." |
-| **Archived memories** | expandable section | Same table structure, with "Restore" action (`POST /api/v1/memories/{id}/restore`) instead of "Archive". Loaded via `GET /api/v1/memories?archived=true`. |
-| **Bulk actions** | toolbar | Select multiple → Archive / Delete / Export |
-| **Add memory** | button | Opens dialog: content text area + optional source note reference. Creates + embeds (`POST /api/v1/memories`). |
-| **Import memories** | button | Upload JSON or markdown file (`POST /api/v1/memories/import`). Markdown: one memory per line (lines starting with `- ` have prefix stripped). JSON: array of `{content, created_at?}` objects. Each imported memory is embedded immediately. |
-| **Export memories** | button | Downloads all active memories as JSON (`GET /api/v1/memories/export`): `[{content, created_at, recall_count, source_conversation_id}]`. Can be re-imported on another instance. |
-
-**Import validation:**
-- Maximum 500 memories per import (matches `max_memories_per_user`)
-- If import would exceed limit, show warning: "You have 142 active memories. Importing 400 would exceed your limit of 500. Import the first 358?" with options: Import partial / Cancel / Archive oldest to make room
-- Duplicate detection: if imported memory content is >95% similar (cosine similarity) to an existing active memory, flag it: Skip / Import anyway / Replace existing
-
-Source: F-MEM-01 US-4.7. All endpoints referenced exist in the Memory group (Section 15).
-
-#### Tab 4j — Skills
-
-| Element | Type | Notes |
-|---|---|---|
-| **My Skills** | section header | Skills in user's private namespace |
-| Skills list | sortable table | Columns: Title, Triggers (pills: tool names, mode names, folder paths), Priority, Enabled toggle. From `GET /api/v1/documents?note_type=skill&namespace=private`. |
-| — Edit | row action | Opens skill file in Tiptap editor panel |
-| — Duplicate | row action | Creates copy with "(copy)" suffix |
-| — Delete | row action | Confirmation required; deletes file from vault |
-| + New Skill | button | Creates a new skill file with template frontmatter in `/skills/` folder; opens in editor |
-| **System Skills** | section header | Skills in shared namespace. Read-only for non-admins. |
-| System skills list | sortable table | Same columns as My Skills. Admin sees Edit/Delete actions; non-admin sees Read-only badge. From `GET /api/v1/documents?note_type=skill&namespace=shared`. |
-| — Override | row action (non-admin) | Creates a copy in user's private namespace with same triggers but higher priority. User can then customize. |
-| + New System Skill | button (admin only) | Creates skill in `/vaults/shared/skills/` |
-| **Skill Token Budget** | metric | "Using {N} / {max} tokens across {count} active skills." Read from `agent.max_skill_tokens`. |
-
-Skills are markdown files managed through the existing vault infrastructure. Tab 4j provides a convenience view — users can also create/edit skills directly in the Tiptap editor or in Obsidian after export.
 
 ### Admin Dashboard Tab Field Specifications
 
@@ -3256,47 +3331,6 @@ Source: Section 18 (Memory Dream system), Decision 18, `dream_audit_log` table. 
 
 Note: MCP server configuration is admin-only. Users see MCP-provided tools in the agent's tool list but cannot add, remove, or configure MCP servers. The confirmation gate applies to all MCP tool calls not in `always_allow`.
 
-### User Dashboard Tab Field Specifications
-
-#### Tab 6a-1 — My Usage
-
-| Element | Type | Notes |
-|---|---|---|
-| My Cost (30 days) | metric card | Total across all models |
-| — Shared key cost | sub-metric | "Using team API keys" |
-| — Personal key cost | sub-metric | "Using your own API keys" — only shown if user has personal keys |
-| Cost trend | sparkline chart | Daily cost over 30 days |
-| Cost by Model | horizontal bar chart | Grouped by model |
-| Calls today | metric card | Count for current day |
-| Token usage (30 days) | metric card | Sum of prompt + completion tokens |
-| Recent Activity | compact table | Last 20 LLM calls: Time, Model, Purpose, Tokens, Cost, Key type |
-| Memory Dream status | card | Last run, sessions since, next estimate |
-
-#### Tab 6a-2 — Vault Health
-
-| Element | Type | Notes |
-|---|---|---|
-| Vault Health Score | metric card | Composite score displayed as percentage. Formula: `(w_orphan × (1 - orphan_ratio)) + (w_density × min(avg_links / 3, 1)) + (w_type × type_coverage) + (w_fresh × (1 - stale_ratio))`. Default weights: 0.4, 0.3, 0.2, 0.1. Thresholds: ≥80% green, 50–79% yellow, <50% red |
-| Orphan Notes | metric + list | Action: suggest links / archive |
-| Hub Notes | metric + list | Most-connected notes (highest incoming wikilink count) |
-| Note Type Distribution | pie/bar chart | permanent / literature / fleeting / project / structure |
-| Recent Indexing Activity | event list | User's namespace only |
-| Link Suggestions | list with actions | One-click accept |
-| Graph Visualization | Cytoscape panel | Click node → open in editor |
-
-#### Tab 6a-3 — System Status
-
-| Element | Type | Notes |
-|---|---|---|
-| Server Status | badge | Connected / Degraded / Offline |
-| Backend Version | text | |
-| PostgreSQL Status | badge | |
-| Index Status | text + progress | User's namespace only |
-| Embedding Model | text (read-only) | Current model + dimensions. No change button |
-| Available LLM Providers | list | Provider name + status (key valid / expired / no key). No key values shown |
-| API Key Status (personal) | per-provider rows | "OpenAI: using your key ✅" / "Anthropic: using shared key" / "Gemini: no key ❌" |
-| Disk Usage | text | User's own storage footprint |
-
 ---
 
 ## 27. Non-Functional Requirements & Success Metrics
@@ -3368,7 +3402,6 @@ Note: MCP server configuration is admin-only. Users see MCP-provided tools in th
 | 5 | Project scoping | Create project → Focus mode → RAG limited to project |
 | 5 | Web search | @web query → results displayed |
 | 6 | Admin dashboard | Real usage data, costs, users, health |
-| 6 | User dashboard | Personal costs with shared/personal breakdown |
 | 6 | Embedding migration | Change model → progress → complete → search works |
 | 7 | Tray agent | Close window → tray icon → Quick Chat via hotkey |
 | 7 | MCP works | Admin can add an MCP server, agent discovers its tools, tool calls work with confirmation gate |
@@ -3419,7 +3452,7 @@ Note: MCP server configuration is admin-only. Users see MCP-provided tools in th
 | Agent writes while user editing | **High** | Debounce watcher; conflict dialog |
 | SSE drops behind reverse proxy | Medium | Auto-reconnect; Caddy `flush_interval -1` |
 | Embedding migration takes hours | Medium | Progress tracking; cancellation; crash recovery |
-| Dream deletes wanted memories | Medium | Archived not deleted; audit log; Tab 4i restore |
+| Dream deletes wanted memories | Medium | Archived not deleted; audit log; restore via Customize → Memory tab |
 | Encryption key lost | **High** | Document backup; MultiFernet rotation future |
 | Users expect Obsidian-quality editor | Low | "Use Obsidian for advanced editing" |
 | captureFromClipboard timeout | Low | 10s timeout; suggest pasting instead |
