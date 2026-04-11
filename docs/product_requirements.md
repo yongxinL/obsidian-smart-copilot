@@ -3,7 +3,7 @@
 **Product:** Smart Copilot
 **Repository:** `smart-copilot` (monorepo: `server/` + `client/`)
 **Document version:** PRD v1.0
-**Derived from:** Client-Server Blueprint v0.2.3 (4 review cycles, 24 locked decisions)
+**Derived from:** Client-Server Blueprint v0.2.3 (4 review cycles, 26 locked decisions)
 **Status:** Ready for implementation — nothing built yet
 **Target release:** v1.0
 **Timeline:** 8 phases across 16 weeks
@@ -185,7 +185,8 @@ External: OpenAI / Anthropic / Gemini / DeepSeek / OpenRouter / Ollama
 | File tree | react-complex-tree | Accessible tree view with drag-and-drop, inline rename, virtualization. Actively maintained, zero dependencies, W3C compliant. Evaluate react-arborist (richer API but unmaintained since June 2025) as alternative during Phase 3 Day 1. |
 | Components | Radix UI (15 primitives) | |
 | Styling | CSS modules, `.sc-` prefix | |
-| Icons | Lucide React | |
+| Icons | Lucide React | Supplementary icon set |
+| Icons | Material Symbols Outlined | Primary icon set (Google variable font). Loaded via Google Fonts CDN. Used for all navigation, action, and UI icons per the UI design spec. |
 | Command | cmdk | |
 | Diff | diff + react-diff-viewer-continued | |
 | Graph | Cytoscape.js (lazy) | |
@@ -214,7 +215,7 @@ Fleeting notes older than `fleeting_expiry_days` (default: 30) are moved to the 
 
 ## 4. Architecture Decisions — Final, Do Not Relitigate
 
-> **FOR AI AGENTS:** These 24 decisions are **locked**. Code contradicting them is a bug. Do not propose alternatives.
+> **FOR AI AGENTS:** These 26 decisions are **locked**. Code contradicting them is a bug. Do not propose alternatives.
 
 ### Decision 1 — PostgreSQL-only RAG backend
 All retrieval in PostgreSQL + pgvector: vector (HNSW), BM25 (tsvector), wikilink graph (recursive CTEs) — single query. `RAGBackend` interface allows future graph-based extension.
@@ -714,7 +715,7 @@ When creating a literature note from an imported document:
 **Agent resolution step:** Before the agent executes a tool or begins a turn in a mode, the agent runner queries:
 
 ```sql
-SELECT d.path, d.content, d.frontmatter
+SELECT d.id, d.path, d.frontmatter, d.namespace, d.user_id
 FROM documents d
 WHERE d.note_type = 'skill'
   AND d.frontmatter->>'enabled' != 'false'
@@ -724,11 +725,33 @@ ORDER BY
   (d.frontmatter->>'priority')::int NULLS LAST
 ```
 
+The query returns metadata only — the `documents` table does not store file content. After the query, the agent runner reads each matched skill's content from the filesystem via `d.path` (resolved through VaultRegistry). This is consistent with the design principle that document content lives on disk, not in PostgreSQL.
+
 The runner then filters results client-side against the current trigger context (tool name, active mode, file path). Matched skill content is prepended to the tool-specific context or mode system prompt.
 
 **Skills are not a new endpoint group.** Skills are documents — they are created via `POST /api/v1/vault/write`, listed via `GET /api/v1/documents?note_type=skill`, read via `GET /api/v1/documents/{id}`. No new API endpoints are needed.
 
 **Token budget:** `agent.max_skill_tokens` (default: 2000) limits the total prepended skill content. Skills exceeding the budget are truncated with a warning in the agent's observation: "Skill content truncated at {N} tokens. Consider splitting into smaller skills."
+
+---
+
+### Decision 27 — Web client: shared React frontend served from both Electron and FastAPI
+
+**Decision:** The React renderer bundle (`client/src/renderer/`) is platform-agnostic by design. It is served in two ways: (1) as files loaded from disk by Electron's `BrowserWindow`, and (2) as a static SPA served by FastAPI via `app.mount("/", StaticFiles(directory="client/dist"))`. All UI rendering is client-side in both cases — FastAPI acts only as a static file host, not a server-side renderer. The backend requires no changes to support web access.
+
+**Platform abstraction layer:** A thin `client/src/platform/` directory provides two implementations of a `PlatformAPI` interface:
+- `electron.ts` — real IPC implementations (file dialogs, tray, notifications, global shortcuts)
+- `web.ts` — browser-safe fallbacks (`<input type="file">` instead of native dialog, no-ops for tray/shortcuts)
+
+The renderer imports `platform` from this directory at build time via a Vite alias. Two build targets exist: `pnpm build:electron` (bundles `platform/electron.ts`) and `pnpm build:web` (bundles `platform/web.ts`, output to `server/static/`).
+
+**Features unavailable on web:** System tray, Quick Chat window, global hotkeys, native file dialogs, Obsidian export, auto-updater. These are hidden (not disabled) when running on web — the `usePlatform()` hook exposes boolean flags, and components conditionally render.
+
+**Default panel states differ by platform:** Electron defaults to all panels open (large display assumed). Web browser defaults to right utility sidebar open, vault panel collapsed (narrower viewport assumed).
+
+**Why this decision:** Zero backend cost, zero new codebase, zero new deployment. Carol (non-technical team member) gets browser access. All team devices get access without installing Electron. The platform abstraction ensures the renderer stays clean without `if (isElectron)` scattered through component code.
+
+**Not in scope for v1.0:** Mobile-optimised layout (viewports < 768px), PWA manifest, offline mode.
 
 ---
 
@@ -744,6 +767,8 @@ CREATE TABLE system_config (key TEXT PRIMARY KEY, value JSONB NOT NULL, updated_
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(), username TEXT UNIQUE NOT NULL,
     email TEXT UNIQUE, password_hash TEXT NOT NULL, role TEXT DEFAULT 'user',
+    display_name TEXT,                                    -- Optional human-readable name shown in UI header
+    title VARCHAR(100),                                   -- Optional free-text job title (e.g. "Editorial Director")
     must_change_password BOOLEAN DEFAULT false, last_dream_at TIMESTAMPTZ,
     sessions_since_dream INT DEFAULT 0, created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -861,7 +886,7 @@ CREATE TABLE user_settings (
 -- The job store table persists scheduled maintenance tasks and Dream check jobs across
 -- container restarts.
 
--- RLS Policies (12 tables)
+-- RLS Policies (13 tables)
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wikilinks ENABLE ROW LEVEL SECURITY;
@@ -890,6 +915,9 @@ CREATE POLICY private_only ON llm_usage USING (user_id = current_setting('app.cu
 CREATE POLICY private_only ON user_settings USING (user_id = current_setting('app.current_user_id')::uuid);
 -- API keys: own + shared (NULL user_id)
 CREATE POLICY api_key_access ON api_keys USING (user_id IS NULL OR user_id = current_setting('app.current_user_id')::uuid);
+-- Index events: own only (admin uses superuser connection for cross-user visibility)
+ALTER TABLE index_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY private_only ON index_events USING (user_id = current_setting('app.current_user_id')::uuid);
 ```
 
 ---
@@ -957,7 +985,7 @@ F-CHAT-05, F-PLATFORM-01/02, F-INTEL-01, F-DASH-01
 ### F-SCHEMA-01: Database Schema with RLS
 
 **US-1.3:** As the system, I must enforce data isolation so users only see their own private data plus shared content.
-- AC1: All 12 RLS-protected tables have policies enabled (see Section 5)
+- AC1: All 13 RLS-protected tables have policies enabled (see Section 5)
 - AC2: Content tables use `namespace = 'shared' OR user_id = current_setting('app.current_user_id')::uuid`
 - AC3: Private tables use `user_id = current_setting('app.current_user_id')::uuid`
 - AC4: `get_db_session` always RESET in finally block (Decision 23)
@@ -997,6 +1025,7 @@ F-CHAT-05, F-PLATFORM-01/02, F-INTEL-01, F-DASH-01
 - AC3: `must_change_password` set to true on new user
 - AC4: `POST /api/v1/admin/users/{id}/reset-password` generates temporary password
 - AC5: `DELETE /api/v1/admin/users/{id}` requires typed username confirmation; deletes DB records, NOT vault files
+- AC6: `PATCH /api/v1/admin/users/{id}` updates user role and/or email. Admin cannot change their own role (prevents accidental lockout). Username is immutable (used in vault folder paths).
 
 ### F-IDX-01: File Watcher + IndexQueue
 
@@ -1221,6 +1250,14 @@ litellm.failure_callback = [log_failure]
 - AC2: No file open → editor collapses, chat takes full width
 - AC3: Tiptap v2 + @tiptap/markdown for round-trip conversion
 - AC4: react-resizable-panels for adjustable split
+- AC5: Two snap presets accessible from SubToolbar: Chat-focused (65% chat / 35% editor) and Write-focused (35% chat / 65% editor). Divider is freely draggable between presets.
+
+**US-3.1a:** As a user, I want to copy an AI response directly into my open document.
+- AC1: A "Copy to Docs" action button appears below each AI message bubble when the editor pane is open and a document is loaded
+- AC2: Clicking "Copy to Docs" appends the AI response content (as markdown) to the currently open document at the cursor position; if the editor is not focused, content is appended at the end of the document
+- AC3: A brief inline confirmation ("Copied to document ✓") replaces the button for 2 seconds
+- AC4: If no document is open in the editor, "Copy to Docs" is hidden (not disabled)
+- AC5: Content is sanitized via DOMPurify before insertion
 
 **Risk:** Tiptap markdown round-trip may lose frontmatter or wikilinks. Test on Day 1. Store frontmatter separately if needed.
 
@@ -1306,9 +1343,9 @@ Skill resolution is transparent to the LLM — skills appear as additional syste
 |---|---|---|
 | **Ask** | Read-only only | #1–6 |
 | **Write** | ragSearch, vaultRead, memoryRecall (scoped to current note) | #1, #2, #6 |
-| **Research** | All 22 tools | #1–22 |
+| **Research** | All 22 built-in tools + all MCP tools | #1–22 + MCP |
 | **Focus** | Read-only + frontmatterQuery (scoped to project) | #1–7 |
-| **Custom** | `agent_tools: true` → all 22; `agent_tools: false` → #1–6 | Configurable |
+| **Custom** | `agent_tools: true` → all 22 built-in + MCP; `agent_tools: false` → #1–6 | Configurable |
 
 **Context management within a turn:** The agent sees all previous tool results in its context window for the current turn. Each tool result is formatted as:
 
@@ -1512,7 +1549,7 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 
 ## 15. API Contract Reference
 
-> **FOR AI AGENTS:** Implement these endpoints exactly as specified. The OpenAPI spec auto-generated from FastAPI is the runtime source of truth, but these definitions are the design spec. Total: ~98 endpoints across 14 route groups.
+> **FOR AI AGENTS:** Implement these endpoints exactly as specified. The OpenAPI spec auto-generated from FastAPI is the runtime source of truth, but these definitions are the design spec. Total: ~99 endpoints across 14 route groups.
 
 ### Auth (6 endpoints — Phase 1)
 
@@ -1522,8 +1559,8 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 | POST | `/api/v1/auth/login` | None | Returns access + refresh tokens |
 | POST | `/api/v1/auth/refresh` | None | Refresh token → new pair |
 | POST | `/api/v1/auth/change-password` | JWT | Requires current password |
-| GET | `/api/v1/auth/me` | JWT | Returns current user profile: id, username, email, role, created_at. Used by Tab 4h (Account) and to refresh user data after admin changes. |
-| PATCH | `/api/v1/auth/me` | JWT | Update current user's profile (email only for v1.0). Returns updated user object. |
+| GET | `/api/v1/auth/me` | JWT | Returns current user profile: id, username, email, role, display_name, title, created_at. Used by Tab 4h (Account) and to refresh user data after admin changes. |
+| PATCH | `/api/v1/auth/me` | JWT | Update current user's profile: email, display_name, title. Returns updated user object. Username is immutable. |
 
 ### Chat (8 endpoints — Phase 2; export endpoint deferred to Phase 7)
 
@@ -1711,7 +1748,7 @@ The `nodes` and `edges` arrays are in native Cytoscape.js format — the client 
 | DELETE | `/api/v1/settings/api-keys/{provider}` | JWT | Delete key |
 | POST | `/api/v1/settings/api-keys/{provider}/test` | JWT | Test key validity |
 
-### Admin (26 endpoints — Phase 1 users, Phase 2 keys, Phase 6 rest, Phase 7 MCP)
+### Admin (27 endpoints — Phase 1 users, Phase 2 keys, Phase 6 rest, Phase 7 MCP)
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -1724,6 +1761,7 @@ The `nodes` and `edges` arrays are in native Cytoscape.js format — the client 
 | POST | `/api/v1/admin/users` | Admin | Create user |
 | DELETE | `/api/v1/admin/users/{id}` | Admin | Delete user + DB data |
 | POST | `/api/v1/admin/users/{id}/reset-password` | Admin | Returns temp password |
+| PATCH | `/api/v1/admin/users/{id}` | Admin | Update user attributes: role, email. Cannot change own role (prevents admin self-demotion). Cannot change username (used in vault paths). |
 | POST | `/api/v1/admin/reindex` | Admin | Force full reindex |
 | GET | `/api/v1/admin/index/status` | Admin | Index queue status |
 | GET | `/api/v1/admin/api-keys` | Admin | Shared keys (hints only) |
@@ -1936,6 +1974,8 @@ Rules for tool use:
 - **Admin recovery:** If a scheduled task needs to be inspected or removed manually, admins can query APScheduler's internal tables directly via `psql` against the application database. APScheduler's table name defaults to `apscheduler_jobs`.
 - **Candidate for future phase:** A read-only admin endpoint (`GET /api/v1/admin/scheduled-tasks`) listing active jobs with next-run times would improve observability. Not scoped for v1.0.
 
+**Why `webSearch` requires confirmation:** Web search is a read-only operation but is classified as requiring confirmation because: (1) it consumes paid API credits (Tavily, Brave, SerpAPI) or makes external network requests that may be rate-limited, and (2) the user should be aware when the agent is reaching outside the vault to the public internet. Users who find the confirmation disruptive can disable it via `agent.confirm_before_web_search` (default: true) in Settings Tab 4e.
+
 ### captureFromClipboard Protocol
 
 ```
@@ -1979,11 +2019,13 @@ The per-mode tool availability table below applies only to **agent loop invocati
 |---|---|---|
 | **Ask** | ragSearch, vaultRead, detectOrphans, suggestLinks, analyzeNote, memoryRecall | #1–6 |
 | **Write** | ragSearch, vaultRead, memoryRecall (RAG scoped to current note) | #1, #2, #6 |
-| **Research** | All 22 tools | #1–22 |
+| **Research** | All 22 built-in tools + all MCP tools | #1–22 + MCP |
 | **Focus** | All read-only tools + frontmatterQuery (RAG scoped to project) | #1–7 |
-| **Custom** | `agent_tools: true` → all 22; `agent_tools: false` → read-only only (#1–6) | Configurable |
+| **Custom** | `agent_tools: true` → all 22 built-in + MCP; `agent_tools: false` → read-only only (#1–6) | Configurable |
 
 Tool lists are hardcoded per mode in v1.0. Custom per-mode tool selection is deferred to a future version.
+
+MCP tools (Phase 7) are added to all modes where `agent_tools: true`. MCP tools follow the same confirmation gate as built-in write tools — all MCP calls require user approval unless the admin has added the tool to the server's `always_allow` list. Modes with `agent_tools: false` (Ask, Write, Focus) never see MCP tools.
 
 ---
 
@@ -2382,6 +2424,7 @@ agent:
   confirm_before_write: true
   confirm_before_split: true
   confirm_before_organize: true
+  confirm_before_web_search: true
   proactive_mode: false
   maintenance_schedule: weekly
   max_skill_tokens: 2000             # Max total tokens from matched skills prepended per turn
@@ -2599,6 +2642,7 @@ server/
 ├── alembic.ini
 ├── alembic/versions/
 ├── scripts/wait-for-pg.sh
+├── static/                      # Built web client bundle (output of pnpm build:web). Served by FastAPI via StaticFiles mount at "/". Empty in development; populated by CI or manual build step.
 └── app/
     ├── main.py                      # FastAPI app, startup validation
     ├── config.py                    # Pydantic settings from YAML + env
@@ -2643,7 +2687,7 @@ server/
     │   ├── watcher.py               # watchdog, calls registry.resolve()
     │   ├── parser.py                # markdown parsing
     │   ├── indexer.py               # IndexQueue: enrich → embed → upsert
-    │   ├── link_graph.py
+    │   ├── link_graph.py            # Wikilink graph queries: reachability CTE, orphan detection, hub scoring
     │   ├── link_refactorer.py
     │   ├── operation_log.py
     │   └── reconciler.py
@@ -2675,7 +2719,8 @@ server/
     │   ├── splitter.py, builder.py, organizer.py,
     │   ├── moc_generator.py, orphan_detector.py
     ├── documents/
-    │   ├── processor.py, pdf.py, docx.py,
+    │   ├── processor.py             # Import coordinator: dispatches to format-specific extractors
+    │   ├── pdf.py, docx.py,
     │   └── html.py                  # nh3 → readability-lxml → markdown
     ├── capture/
     │   ├── manager.py, web_clipper.py
@@ -2722,6 +2767,10 @@ client/
     │   ├── index.html
     │   ├── quickchat.tsx
     │   └── QuickChatView.tsx
+    ├── platform/
+    │   ├── types.ts             # PlatformAPI interface — file dialogs, tray, notifications, shortcuts
+    │   ├── electron.ts          # Real IPC implementations via Electron contextBridge
+    │   └── web.ts               # Browser-safe fallbacks (file input, no-ops for tray/shortcuts)
     └── shared/
         ├── types.ts, constants.ts
 ```
@@ -2729,6 +2778,10 @@ client/
 ---
 
 ## 26. UI Pages & Navigation
+
+> **Frontend design authority:** `ui-spec.md` is the canonical reference for all UI implementation decisions: design tokens, component specifications, layout patterns, screen specs, navigation logic, and platform abstraction. This section defines the page inventory, settings field contracts, and API bindings. Where this section and the UI spec conflict, **the UI spec wins for visual/interaction decisions; this section wins for data contracts and API bindings.**
+
+> **Web client:** The React renderer is served from both Electron and FastAPI (Decision 27). All pages in this section are available on both platforms unless marked `(Electron only)`.
 
 ### Page Map
 
@@ -2791,9 +2844,29 @@ client/
 **Search bar:** At top of sidebar, filters both tree and list views. Debounced 300ms. In tree view, search expands matching paths and dims non-matching nodes. In list view, search filters the table.
 
 ### Settings Tabs
+
+Settings uses a secondary left-rail tab navigation (`SettingsTabNav`, 200px). Tabs in order:
+
 ```
-[ General ] [ Model ] [ RAG ] [ Modes ] [ Features ] [ API Keys ] [ Advanced ] [ Account ] [ Memory ] [ Skills ]
+[ Profile ] [ Appearance ] [ Model & Chat ] [ RAG ] [ Modes ] [ Features ] [ API Keys ] [ Memory ] [ Skills ] [ Advanced ] [ Help & Support ] [ About ]
 ```
+
+| Tab | Label | Phase | Notes |
+|---|---|---|---|
+| 4-profile | Profile | 1 | display_name, username (read-only), email, title, bio, avatar |
+| 4a | Appearance | 1 | Theme (light only v1), language |
+| 4b | Model & Chat | 2 | AI persona name, default mode, default model, temperature, etc. |
+| 4c | RAG | 2 | Embedding info, retrieval weights |
+| 4d | Modes | 2 | System prompt editors per mode |
+| 4e | Features | 4 | Memory, agent confirmation toggles |
+| 4f | API Keys | 1 | User-level key management |
+| 4g | Advanced | 3 | Vault path, date format, autosave interval |
+| 4h | Memory | 4 | Memory list, import/export, Dream status |
+| 4j | Skills | 4 | Skill list, create/edit/override |
+| 4-help | Help & Support | 1 | Documentation links, floating help FAB |
+| 4-about | About | 1 | Version, licence info |
+
+> **General settings** (notification sounds, indexing progress, Obsidian path, subfolder config) are split between **Appearance** (display) and **Advanced** (vault/editor) tabs per the UI spec.
 
 ### Admin Dashboard Tabs
 ```
@@ -2880,10 +2953,10 @@ tags:
 
 | Setting | Type | Default | Notes |
 |---|---|---|---|
-| Theme | dropdown | `system` | Options: `light`, `dark`, `system` |
-| Language | dropdown | `en` | Display language. English only for v1.0; placeholder for future i18n. Read-only for now. |
-| Notification sounds | toggle | on | Play sound on system notifications |
-| Show indexing progress in status bar | toggle | on | |
+| Theme | dropdown | `system` | Options: `light`, `dark`, `system`. Stored in `user_settings` (synced across devices). |
+| Language | dropdown | `en` | Display language. English only for v1.0; placeholder for future i18n. Read-only for now. Stored in `user_settings`. |
+| Notification sounds | toggle | on | Play sound on system notifications. Persisted locally via `electron-store` (client-only — no server sync). |
+| Show indexing progress in status bar | toggle | on | Persisted locally via `electron-store` (client-only). |
 | Default new note location | text input | `/` | Relative path within user's vault. Where `vaultWrite` and Zettel capture create notes when no specific path is given. |
 | Date format | dropdown | `YYYY-MM-DD` | Options: `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`. Used in frontmatter `created` field and vault export filenames. |
 | Confirm before deleting conversations | toggle | on | Show warning modal before deleting unsaved conversations |
@@ -2892,10 +2965,12 @@ tags:
 | Export subfolder for notes | text input | `Smart Copilot/Notes` | Subfolder within the Obsidian vault where exported notes are placed. Created automatically on first export. |
 | Export subfolder for conversations | text input | `Smart Copilot/Conversations` | Subfolder for exported conversations. |
 
-#### Tab 4b — Model
+#### Tab 4b — Model & Chat
 
 | Setting | Type | Default | Notes |
 |---|---|---|---|
+| AI persona name | text input | `Smart Copilot` | The name displayed as the AI's label in chat messages (e.g. "Curator AI", "Research Assistant"). Stored in `user_settings` as `ai_persona_name`. Max 40 characters. Applied client-side only — does not affect system prompts or model behaviour. |
+| Default chat mode | dropdown | `Chat` | Options: `Chat`, `Research`, `Agent`. The mode pre-selected when starting a new conversation. Stored in `user_settings` as `default_chat_mode`. |
 | Default chat model | dropdown | from server config | Populated from `GET /api/v1/models`. Sticky — overrides the server default for this user. |
 | Default temperature | slider | 0.7 | 0.0–2.0 |
 | Default max tokens | number | 4096 | Model-specific upper bound shown |
@@ -2947,6 +3022,7 @@ Source: Decision 12. The 4 built-in modes (Ask, Write, Research, Focus) are pre-
 | Agent confirmation: before file write | toggle | on | Maps to `agent.confirm_before_write` |
 | Agent confirmation: before note split | toggle | on | Maps to `agent.confirm_before_split` |
 | Agent confirmation: before vault organize | toggle | on | Maps to `agent.confirm_before_organize` |
+| Agent confirmation: before web search | toggle | on | Maps to `agent.confirm_before_web_search`. When off, agent can search the web without asking. |
 | Agent max tool calls per turn | number | 10 | Maps to `agent.max_tool_calls_per_turn`. Range: 1–25. |
 | Web search: max results | number | 5 | Maps to `web_search.max_results`. Range: 1–20. |
 | Web search: cross-reference vault | toggle | on | Maps to `web_search.cross_reference_vault`. When on, web results are compared against vault notes. |
@@ -2979,17 +3055,26 @@ Source: Decision 12. The 4 built-in modes (Ask, Write, Research, Focus) are pre-
 | Proactive agent mode | toggle | off | Maps to `agent.proactive_mode`. When on, background agent runs scheduled vault health checks and cleanup suggestions. Requires tray agent (Phase 7). |
 | Reset all settings to defaults | button | — | Clears all user overrides from `user_settings`. Requires confirmation dialog: "This will reset all settings to server defaults. Your API keys, modes, and projects will not be affected." |
 
-#### Tab 4h — Account
+#### Tab 4-profile — Profile
 
 | Setting | Type | Notes |
 |---|---|---|
-| Username | text (read-only) | |
-| Email | text input | User can update their own email. Saves via `PATCH /api/v1/auth/me`. |
+| Avatar | image upload | 128×128px display, `rounded-2xl`. Hover reveals camera button. Upload via `PATCH /api/v1/auth/me/avatar` (Phase 3+). Placeholder initials shown until set. |
+| Display Name | text input | Maps to `users.display_name`. Shown in UI header and chat. Max 80 chars. Saves via `PATCH /api/v1/auth/me`. |
+| Username | text (read-only) | Maps to `users.username`. Immutable — used in vault folder paths. Caption: "(Cannot be changed)". |
+| Email | text input | Maps to `users.email`. Saves via `PATCH /api/v1/auth/me`. |
+| Title | text input | Maps to `users.title`. Optional free-text (e.g. "Editorial Director"). Max 100 chars. Shown in header alongside role label. Saves via `PATCH /api/v1/auth/me`. |
+| Bio | textarea (3 rows) | Optional user bio. Stored in `user_settings` as `profile_bio`. |
 | Change Password | button | Opens dialog: current password + new password + confirm. Calls `POST /api/v1/auth/change-password`. |
-| Role | text (read-only) | "Admin" or "User" |
-| Account created | text (read-only) | Date |
+| Role | text (read-only) | Displays "Admin" or "Member" (not raw DB value "user"). |
+| Account created | text (read-only) | Formatted date from `users.created_at`. |
+| Active sessions | list | JWT sessions with device/browser info + created timestamp + "Revoke" button. From `GET /api/v1/auth/sessions`. Allows multi-device session management. |
 
 Source: Decision 21 (password reset flow, role definitions). Profile data loaded via `GET /api/v1/auth/me` (see Section 15, Auth endpoints).
+
+#### Tab 4h — Account
+
+> **Deprecated tab label.** This tab is now "Profile" (Tab 4-profile above). The `Tab 4h` label remains in older code references and means the same thing. New code should use the route `/settings/profile`.
 
 #### Tab 4i — Memory
 
@@ -3015,6 +3100,24 @@ Source: Decision 21 (password reset flow, role definitions). Profile data loaded
 - Duplicate detection: if imported memory content is >95% similar (cosine similarity) to an existing active memory, flag it: Skip / Import anyway / Replace existing
 
 Source: F-MEM-01 US-4.7. All endpoints referenced exist in the Memory group (Section 15).
+
+#### Tab 4j — Skills
+
+| Element | Type | Notes |
+|---|---|---|
+| **My Skills** | section header | Skills in user's private namespace |
+| Skills list | sortable table | Columns: Title, Triggers (pills: tool names, mode names, folder paths), Priority, Enabled toggle. From `GET /api/v1/documents?note_type=skill&namespace=private`. |
+| — Edit | row action | Opens skill file in Tiptap editor panel |
+| — Duplicate | row action | Creates copy with "(copy)" suffix |
+| — Delete | row action | Confirmation required; deletes file from vault |
+| + New Skill | button | Creates a new skill file with template frontmatter in `/skills/` folder; opens in editor |
+| **System Skills** | section header | Skills in shared namespace. Read-only for non-admins. |
+| System skills list | sortable table | Same columns as My Skills. Admin sees Edit/Delete actions; non-admin sees Read-only badge. From `GET /api/v1/documents?note_type=skill&namespace=shared`. |
+| — Override | row action (non-admin) | Creates a copy in user's private namespace with same triggers but higher priority. User can then customize. |
+| + New System Skill | button (admin only) | Creates skill in `/vaults/shared/skills/` |
+| **Skill Token Budget** | metric | "Using {N} / {max} tokens across {count} active skills." Read from `agent.max_skill_tokens`. |
+
+Skills are markdown files managed through the existing vault infrastructure. Tab 4j provides a convenience view — users can also create/edit skills directly in the Tiptap editor or in Obsidian after export.
 
 ### Admin Dashboard Tab Field Specifications
 
@@ -3228,7 +3331,7 @@ Note: MCP server configuration is admin-only. Users see MCP-provided tools in th
 
 | Requirement | Implementation |
 |---|---|
-| Data isolation | RLS on all 12 user-scoped tables |
+| Data isolation | RLS on all 13 user-scoped tables |
 | Key encryption | Fernet AES-128 at rest |
 | Token storage | Electron safeStorage (OS keychain) |
 | HTML sanitization | DOMPurify (client) + nh3 (server) |
