@@ -1,0 +1,21 @@
+{
+  "_version": "0.3.0",
+  "_updated": "2026-04-12T12:09:05.613Z",
+  "projectName": "Smart Copilot",
+  "techStack": "FastAPI + Python",
+  "currentPhase": 0,
+  "currentMilestone": 0,
+  "activeTask": null,
+  "skillTier": "advanced",
+  "sessionBudget": 400000,
+  "session_token_budget": 400000,
+  "default_context": "200k",
+  "cost_budget": 10,
+  "model_switch_policy": "notify",
+  "teamMode": "auto",
+  "maxWorkers": "auto",
+  "qualityConfig": {
+    "minCoverage": 80,
+    "lintLevel": "strict"
+  }
+}

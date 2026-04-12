@@ -1,0 +1,24 @@
+{
+  "_version": "1",
+  "typecheck": {
+    "enabled": true,
+    "blocking": true
+  },
+  "lint": {
+    "enabled": true,
+    "blocking": true
+  },
+  "tests": {
+    "enabled": true,
+    "blocking": true,
+    "minCoverage": 80
+  },
+  "build": {
+    "enabled": false,
+    "blocking": false
+  },
+  "security": {
+    "enabled": true,
+    "blocking": false
+  }
+}
