@@ -3,11 +3,13 @@
 **Product:** Smart Copilot
 **Repository:** `smart-copilot` (monorepo: `server/` + `client/`)
 **Document version:** PRD v1.0
-**Derived from:** Client-Server Blueprint v0.2.3 (4 review cycles, 26 locked decisions)
+**Derived from:** Client-Server Blueprint v0.2.3 (4 review cycles, 27 locked decisions)
 **Status:** Ready for implementation — nothing built yet
 **Target release:** v1.0
 **Timeline:** 8 phases across 16 weeks
 **Audience:** AI code assistants (Claude Code primary), human developers
+
+> **IMPORTANT FOR AI AGENTS:** This document is the **single authoritative reference** for implementing Smart Copilot. It is fully self-contained. Do NOT search for or reference any earlier architecture documents — they predate the current design and contain superseded specifications. If this PRD and any other document conflict, **this PRD wins**. The UI Design Specification (`ui-spec.md`) is the companion document for frontend visual and interaction decisions; where they conflict, the PRD wins for data contracts and API bindings, the UI spec wins for visual/interaction decisions.
 
 ---
 
@@ -194,6 +196,7 @@ External: OpenAI / Anthropic / Gemini / DeepSeek / OpenRouter / Ollama
 | Update | electron-updater | GitHub Releases |
 | Local storage | electron-store | Atomic JSON persistence for client-only settings (Obsidian vault path, last-used export folders, sidebar state). ESM-only. |
 | API | Generated from OpenAPI | auto-synced |
+| Animation | motion/react (Framer Motion v11) | Panel slides, modals, collapsibles |
 
 ### 3.4 OpenAPI Spec Sync
 
@@ -209,13 +212,13 @@ Within a namespace, unqualified wikilinks (`[[Topic]]`) resolve via shortest-uni
 
 ### 3.7 Fleeting Note Expiry
 
-Fleeting notes older than `fleeting_expiry_days` (default: 30) are moved to the archive folder (`zettelkasten.splitter.archive_folder`, default `/archive/`) by the reconciler during its periodic run. The note's `note_type` frontmatter is updated to `archived_fleeting` and the document record's `note_type` column is updated accordingly. `archived_fleeting` notes are removed from all RAG indexes (not searchable) but remain on disk in the archive folder. The file move is recorded in `operation_log` for undo support. The reconciler processes expiry once per `vault.reconciliation_interval_hours` (default: 6 hours). Files are never auto-deleted — only explicit user action or the `cleanOrphans` agent tool removes files permanently.
+Fleeting notes where `documents.created_at` is older than `fleeting_expiry_days` (default: 30) are moved to the archive folder (`zettelkasten.splitter.archive_folder`, default `/archive/`) by the reconciler during its periodic run. The note's `note_type` frontmatter is updated to `archived_fleeting` and the document record's `note_type` column is updated accordingly. `archived_fleeting` notes are removed from all RAG indexes (not searchable) but remain on disk in the archive folder. The file move is recorded in `operation_log` for undo support. The reconciler processes expiry once per `vault.reconciliation_interval_hours` (default: 6 hours). Files are never auto-deleted — only explicit user action or the `cleanOrphans` agent tool removes files permanently.
 
 ---
 
 ## 4. Architecture Decisions — Final, Do Not Relitigate
 
-> **FOR AI AGENTS:** These 26 decisions are **locked**. Code contradicting them is a bug. Do not propose alternatives.
+> **FOR AI AGENTS:** These 27 decisions are **locked**. Code contradicting them is a bug. Do not propose alternatives.
 
 ### Decision 1 — PostgreSQL-only RAG backend
 All retrieval in PostgreSQL + pgvector: vector (HNSW), BM25 (tsvector), wikilink graph (recursive CTEs) — single query. `RAGBackend` interface allows future graph-based extension.
@@ -544,7 +547,7 @@ async def require_admin(current_user: User = Depends(get_current_user)):
 **Client enforcement:** The Electron client hides admin UI elements (Admin Dashboard tab, user management, shared API key configuration) when the logged-in user's role is `user`. This is cosmetic only — the API dependency is the real gate.
 
 **Password reset flow (no email):** Since this is a homelab system with no email infrastructure, password reset is admin-mediated:
-- Admin clicks "Reset Password" on a user row in Tab 5e
+- Admin clicks "Reset Password" on a user row in Admin Tab E
 - Backend generates a random temporary password
 - Dialog shows: "Temporary password for {username}: `{password}`. This will only be shown once. The user must change their password on next login."
 - User's next login with the temporary password forces a password change dialog before proceeding (enforced via `must_change_password` flag on user record)
@@ -564,6 +567,8 @@ class VaultRegistry:
 **SYSTEM_USER_ID:** `00000000-0000-0000-0000-000000000000` — a well-known UUID constant committed to the codebase. Used as the owner of all shared namespace content. Never logs in. RLS policies handle visibility — shared rows are visible to all users.
 
 **Registry refresh triggers:** Backend startup, user created (`POST /api/v1/admin/users`), user deleted (`DELETE /api/v1/admin/users/{id}`).
+
+**Multi-worker synchronisation:** When running with `--workers > 1`, VaultRegistry uses PostgreSQL LISTEN/NOTIFY to broadcast refresh signals. On user create/delete, the handling worker executes `NOTIFY vault_registry_refresh`. All workers listen on this channel and call `registry.rebuild()` when notified. This ensures all workers have consistent path mappings within seconds of a user change.
 
 **On user creation:** The backend creates the folder at `{vault.base_path}/private/{username}/` and registers the mapping in VaultRegistry.
 
@@ -673,7 +678,7 @@ Tools not in `always_allow` trigger the `tool_confirm` SSE event and require use
 - Admin can disable individual MCP servers or tools via the UI without removing configuration
 - All MCP tool calls are logged to `llm_usage` table with `purpose: 'mcp_tool'` and `provider: '{server_name}'`
 
-**Authentication for HTTP-based MCP servers:** Auth tokens are stored in the `api_keys` table with `provider = 'mcp:{server_name}'`, encrypted via Fernet (per Decision 7). The admin enters the token via Tab 5h's "Add MCP Server" dialog. At connection time, the MCP client reads the decrypted token and injects it as an `Authorization: Bearer {token}` header. Tokens are never stored in settings.yaml, environment variables, or config files.
+**Authentication for HTTP-based MCP servers:** Auth tokens are stored in the `api_keys` table with `provider = 'mcp:{server_name}'`, encrypted via Fernet (per Decision 7). The admin enters the token via Admin Tab H's "Add MCP Server" dialog. At connection time, the MCP client reads the decrypted token and injects it as an `Authorization: Bearer {token}` header. Tokens are never stored in settings.yaml, environment variables, or config files.
 
 **What MCP is NOT in Smart Copilot:** MCP does not replace the vault filesystem, the file watcher, or the indexing pipeline. The server-local vault at `/vaults/` remains the source of truth. MCP is purely an agent extension mechanism for connecting to external services.
 
@@ -774,6 +779,8 @@ CREATE TABLE users (
 );
 
 CREATE TABLE api_keys (
+    -- user_id = NULL → shared key (visible to all users via RLS policy)
+    -- user_id = {uuid} → personal key (visible only to that user)
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID REFERENCES users(id),
     provider TEXT NOT NULL, encrypted_key TEXT NOT NULL, display_hint TEXT,
     is_valid BOOLEAN DEFAULT true, last_tested_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT now(),
@@ -785,7 +792,8 @@ CREATE TABLE documents (
     namespace TEXT NOT NULL DEFAULT 'private', path TEXT NOT NULL, content_hash TEXT NOT NULL,
     enrichment_hash TEXT, note_type TEXT DEFAULT 'permanent', frontmatter JSONB DEFAULT '{}',
     title TEXT, folder TEXT, tags TEXT[] DEFAULT '{}', word_count INT DEFAULT 0,
-    updated_at TIMESTAMPTZ DEFAULT now(), UNIQUE (user_id, namespace, path)
+    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (user_id, namespace, path)
 );
 
 CREATE TABLE chunks (
@@ -839,6 +847,11 @@ CREATE INDEX memories_hnsw ON memories USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX memories_user ON memories (user_id);
 CREATE INDEX memories_active ON memories (user_id, is_archived) WHERE is_archived = false;
 
+-- Note: chunks.embedding and memories.embedding are intentionally nullable to support
+-- embedding migration (Decision 20). During migration, chunks with NULL embeddings are
+-- excluded from HNSW search automatically. The hybrid RAG query (§21) handles this
+-- gracefully — NULL-embedding chunks don't appear in vector_ranked CTE.
+
 CREATE TABLE dream_audit_log (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id),
     dream_run_at TIMESTAMPTZ NOT NULL, phase TEXT NOT NULL, action TEXT NOT NULL,
@@ -848,7 +861,7 @@ CREATE TABLE dream_audit_log (
 
 CREATE TABLE projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id),
-    name TEXT NOT NULL, include_folders TEXT[] DEFAULT '{}', exclude_folders TEXT[] DEFAULT '{}',
+    name TEXT NOT NULL, description TEXT, include_folders TEXT[] DEFAULT '{}', exclude_folders TEXT[] DEFAULT '{}',
     tags TEXT[] DEFAULT '{}', system_prompt TEXT, default_model_id TEXT, created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -883,13 +896,28 @@ CREATE TABLE user_settings (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    refresh_token_hash TEXT NOT NULL,         -- SHA-256 hash of refresh token (never store raw)
+    device_info TEXT,                          -- User-Agent string or parsed device name
+    ip_address INET,                          -- Client IP at login time
+    created_at TIMESTAMPTZ DEFAULT now(),
+    last_used_at TIMESTAMPTZ DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL,          -- refresh token expiry
+    is_revoked BOOLEAN DEFAULT false
+);
+CREATE INDEX sessions_user ON sessions (user_id) WHERE is_revoked = false;
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY private_only ON sessions USING (user_id = current_setting('app.current_user_id')::uuid);
+
 -- ═══ APSCHEDULER (auto-created) ═══
 -- APScheduler's SQLAlchemyJobStore creates and manages its own table(s) automatically
 -- on first run. Do NOT include in Alembic migrations — APScheduler handles DDL internally.
 -- The job store table persists scheduled maintenance tasks and Dream check jobs across
 -- container restarts.
 
--- RLS Policies (13 tables)
+-- RLS Policies (14 tables)
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wikilinks ENABLE ROW LEVEL SECURITY;
@@ -966,7 +994,7 @@ F-CHAT-05, F-PLATFORM-01/02, F-INTEL-01, F-DASH-01
 
 ## 7. Phase 1 — Foundation (Weeks 1–2)
 
-**Backend:** Docker container with supervisord + wait-for-pg.sh, Alembic migrations for full schema (including system_config, enrichment_hash), auth system (JWT, register, login, password change, require_admin, must_change_password), user management CRUD + password reset, VaultRegistry + file watcher (watchdog) + IndexQueue, markdown parser (frontmatter + wikilink extraction), NoteTypeClassifier, Workspace CRUD (`GET/POST/PATCH/DELETE /api/v1/projects` — UI-only in Phase 1, RAG scoping activates Phase 5).
+**Backend:** Docker container with supervisord + wait-for-pg.sh, Alembic migrations for full schema (including system_config, enrichment_hash), auth system (JWT, register, login, password change, require_admin, must_change_password), user management CRUD + password reset, VaultRegistry + file watcher (watchdog) + IndexQueue, markdown parser (frontmatter + wikilink extraction), NoteTypeClassifier, Workspace CRUD (`GET/POST/PATCH/DELETE /api/v1/projects` — UI-only in Phase 1, RAG scoping activates Phase 5), indexing progress endpoint (`GET /api/v1/vault/index/progress`).
 
 **Frontend:** Electron shell with Forge + Vite, Login/connection setup page with first-run admin creation, API client generated from OpenAPI spec, auth flow (JWT safeStorage, refresh, forced password change).
 
@@ -993,6 +1021,12 @@ F-CHAT-05, F-PLATFORM-01/02, F-INTEL-01, F-DASH-01
 - AC3: Private tables use `user_id = current_setting('app.current_user_id')::uuid`
 - AC4: `get_db_session` always RESET in finally block (Decision 23)
 - AC5: `system_config` seeded with embedding model on first run
+
+**system_config seed values (first migration):**
+INSERT INTO system_config (key, value) VALUES
+  ('embedding', '{"model": "openai/text-embedding-3-small", "dimensions": 1536, "migration_status": "idle"}'),
+  ('version', '"1.0.0"');
+These must match the defaults in settings.yaml `rag.embedding_model` and `rag.embedding_dimensions`.
 
 ### F-AUTH-01: JWT Authentication System
 
@@ -1128,6 +1162,14 @@ async def reindex_document(doc_id: UUID, new_content: str, session: AsyncSession
 - AC2: Paths sent as `file_references` in ChatCompletionRequest
 - AC3: Backend fetches those specific documents as additional context
 
+**@mention implementation:**
+- Trigger: `@` character typed in the Lexical editor, followed by any character.
+- Autocomplete source: `GET /api/v1/documents?search={typed_text}&limit=10` — returns matching documents by title and filename.
+- Dropdown: shows file icon (by note_type) + title + folder path. Max 10 results. Keyboard navigable (↑↓/Enter/Escape).
+- Rendering: selected file appears as an inline pill in the editor: `[📝 {title} ✕]` with `bg-secondary/10 text-secondary rounded-full px-2`.
+- On send: all mention pills are extracted as `file_references: string[]` (paths) in the ChatCompletionRequest. The pill text is stripped from the `message` string.
+- Reserved prefixes: `@web` and `@zettel` are intercepted before the document autocomplete fires. If the typed text after `@` matches "web" or "zettel" exactly, the special command handling takes priority (see F-CHAT-06 and F-ZETT-03). Otherwise, document autocomplete proceeds.
+
 **US-2.7:** As a user, I want to control MCP tool availability per conversation.
 - AC1: Chat input toolbar shows MCP toggle with 3 states: Disable / Auto / Manual
 - AC2: State stored on `conversations.mcp_mode`; persists when conversation is resumed
@@ -1144,6 +1186,7 @@ class ChatCompletionRequest(BaseModel):
     mode_id: str | None = None
     current_note_path: str | None = None
     file_references: list[str] = []
+    images: list[dict] = []               # [{data: base64, media_type: "image/png"}] — Phase 7
     temperature: float | None = None
     max_tokens: int | None = None
     top_p: float | None = None
@@ -1159,6 +1202,14 @@ class ChatCompletionRequest(BaseModel):
     access_token: str | None = None  # SSE fallback
 ```
 
+**New conversation flow:**
+1. Client calls `POST /api/v1/conversations` with optional `project_id` and `model_id`. Returns `{id, ...}`.
+2. Client sets `conversation_id` to the returned ID.
+3. Client sends first message via `POST /api/v1/chat/completions` with `conversation_id`.
+4. Backend auto-generates title on first user message (see Decision 14).
+
+The "New Thread" button always calls `POST /api/v1/conversations` before the first message is sent. `conversation_id` in ChatCompletionRequest is always required — never auto-created from the chat endpoint.
+
 **Backend processing flow:**
 1. Validate conversation_id belongs to current user
 1a. If `POST /api/v1/conversations` is called from the Workspace page (client sends `project_id` in the request body), set `conversations.project_id` to the active workspace's UUID. If no workspace is active or the call originates from the Chat page, `project_id` is null.
@@ -1173,6 +1224,11 @@ class ChatCompletionRequest(BaseModel):
 9. Stream tokens via SSE, record assistant message to DB on completion
 10. If agent_enabled: run AgentRunner with tool results streamed as SSE events
 10a. MCP tool availability: check `mcp_mode` from request (or fall back to `conversations.mcp_mode`). If `disable`, no MCP tools are injected into the agent's tool list. If `auto`, all admin-enabled MCP tools are available. If `manual`, only MCP tools explicitly selected by the user in the chat input are injected.
+
+**Utility sidebar data sources:**
+- **Sources:** Populated from the `citations` SSE event data for the most recent assistant message. Client renders each source as a card with note type tag + title + excerpt.
+- **Suggested Tasks:** Generated by the backend as part of the `done` SSE event payload. Backend appends `"suggested_tasks": [{title: string, action: string}]` (max 3) based on the conversation context. Example: if orphans were mentioned, suggest "Run orphan cleanup". If a topic lacks notes, suggest "Create a note about {topic}". The LLM generates these as a structured output step after the main response. Empty array when no tasks are relevant.
+- **Deep Dive:** Static prompt templates contextualised with the current conversation topic. Generated client-side from the last assistant message: "Explore connections to {topic}", "Find contradicting notes", "Summarise what I know about {topic}". Clicking sends the prompt text as a new user message.
 
 ### F-CHAT-02: Chat History CRUD
 
@@ -1541,10 +1597,10 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 - Command palette (cmdk)
 - Diff modal (diff + react-diff-viewer-continued)
 - Vault export — complete implementation of `POST /api/v1/conversations/{id}/export` (endpoint defined in Phase 2 Chat group, deferred to Phase 7)
-- Image understanding (vision models)
+- Image understanding (vision models): Client allows image upload via More Options Drawer or paste into Lexical editor. Images are sent as base64 in the `images` field of ChatCompletionRequest (array of `{data: base64_string, media_type: string}`). Backend passes images to LiteLLM `acompletion` using the vision-capable model's multimodal message format. Only available when the selected model has `vision` in its capabilities list. Max image size: 5MB. Supported formats: PNG, JPEG, WebP, GIF.
 - Settings UI polish (all 10 tabs)
 - User API key management with provider status
-- MCP client support: `mcp` Python SDK integration, ToolRegistry (unified built-in + MCP tools), stdio + Streamable HTTP transports, admin UI for server configuration (Tab 5h), health checks + auto-reconnection, 5 new admin endpoints
+- MCP client support: `mcp` Python SDK integration, ToolRegistry (unified built-in + MCP tools), stdio + Streamable HTTP transports, admin UI for server configuration (Admin Tab H), health checks + auto-reconnection, 5 new admin endpoints
 - Obsidian export: "Export to Obsidian" buttons in editor toolbar, document list context menu, and conversation header. Electron IPC for native folder dialog + batch file writing with progress. Markdown output preserves frontmatter and wikilinks in Obsidian-compatible format.
 - Theme system: 4 options (Light / Dark / Auto / Custom) via Electron `nativeTheme.themeSource` IPC bridge. Theme stored in `electron-store` (device-specific, not synced to server). Applied in main process before window renders to prevent flash. Custom theme: user picks accent colour (replaces `--sc-secondary` globally) and background colour (replaces `--sc-color-bg`) using native `<input type="color">` elements. Custom colour values stored in `electron-store` as `theme.customAccent` and `theme.customBackground`. CSS custom properties updated at runtime via `ipcRenderer` → `ipcMain` → `webContents.executeJavaScript`.
 
@@ -1565,7 +1621,7 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 
 > **FOR AI AGENTS:** Implement these endpoints exactly as specified. The OpenAPI spec auto-generated from FastAPI is the runtime source of truth, but these definitions are the design spec. Total: ~103 endpoints across 14 route groups.
 
-### Auth (6 endpoints — Phase 1)
+### Auth (9 endpoints — Phase 1)
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -1575,6 +1631,7 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 | POST | `/api/v1/auth/change-password` | JWT | Requires current password |
 | GET | `/api/v1/auth/me` | JWT | Returns current user profile: id, username, email, role, display_name, title, created_at. Used by User Profile Modal → Profile tab and to refresh user data after admin changes. |
 | PATCH | `/api/v1/auth/me` | JWT | Update fields on the `users` table: `email`, `display_name`, `title`. Returns updated user object. Username is immutable (used in vault paths). Bio is stored in `user_settings` JSONB as `profile_bio` — save bio via `PUT /api/v1/settings`, not this endpoint. |
+| PATCH | `/api/v1/auth/me/avatar` | JWT | Upload/replace avatar image. Accepts multipart form with `avatar` file field. Max 2MB. Resized server-side to 128×128px. Stored on disk at `/vaults/private/{username}/.avatar.png`. Returns updated user object. Phase 3+. |
 | GET | `/api/v1/auth/sessions` | JWT | List active sessions for current user. Returns array of `{id, device_info, ip_address, created_at, last_used_at}`. Used by Profile Modal → Profile tab → Active Sessions list. |
 | DELETE | `/api/v1/auth/sessions/{id}` | JWT | Revoke a specific session by ID. Cannot revoke the session making the request (returns 400). Used by Profile Modal → Profile tab → Revoke button. |
 
@@ -1586,7 +1643,7 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 | GET | `/api/v1/conversations` | JWT | Paginated. Query params: `search` (text), `date_from`, `date_to`, `project_id` (UUID — filters to workspace; pass `none` to return conversations with no workspace assigned). |
 | GET | `/api/v1/conversations/{id}` | JWT | With messages |
 | POST | `/api/v1/conversations` | JWT | Create conversation. Accepts optional `project_id` in request body — when supplied, associates the new conversation with that workspace. |
-| PATCH | `/api/v1/conversations/{id}` | JWT | Update title, model, mode, project_id. Pass `project_id: null` to remove workspace association. |
+| PATCH | `/api/v1/conversations/{id}` | JWT | Update mutable conversation fields: `title`, `model_id`, `mode_id`, `project_id` (pass null to remove workspace), `web_search_enabled`, `relevant_note_enabled`, `mcp_mode`. |
 | DELETE | `/api/v1/conversations/{id}` | JWT | Delete with confirmation logic |
 | POST | `/api/v1/conversations/{id}/regenerate` | JWT | Delete last assistant message, re-run |
 | POST | `/api/v1/conversations/{id}/export` | JWT | Export to vault as markdown. **Ships in Phase 7** — depends on vault write pipeline and Tiptap editor. Endpoint stub may exist in Phase 2 (returns 501) but full implementation deferred. |
@@ -1603,13 +1660,13 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| GET | `/api/v1/documents` | JWT | Paginated. Query params: `note_type`, `folder`, `tag`, `project_id` (UUID — when supplied, applies the workspace's `include_folders`, `exclude_folders`, and `tags` rules server-side and returns only matching documents). Response includes `total_in_scope` count when `project_id` is supplied. |
+| GET | `/api/v1/documents` | JWT | Paginated. Query params: `note_type`, `folder`, `tag`, `project_id` (UUID — when supplied, applies the workspace's `include_folders`, `exclude_folders`, and `tags` rules server-side and returns only matching documents). Response includes `total_in_scope` count when `project_id` is supplied. Response always includes a top-level `total: int` field with the full count of matching documents (independent of pagination limit). Usable for count-only queries with `limit=0`. |
 | GET | `/api/v1/documents/{id}` | JWT | Metadata + content |
 | PUT | `/api/v1/documents/{id}` | JWT | Write to filesystem + reindex |
 | POST | `/api/v1/documents/upload` | JWT | Import PDF, DOCX, HTML |
 | GET | `/api/v1/documents/upload/{task_id}/status` | JWT | Poll import progress |
 
-### Vault (13 endpoints — Phases 2, 3, 4, 6)
+### Vault (14 endpoints — Phases 1, 2, 3, 4, 6)
 
 | Method | Path | Auth | Phase | Notes |
 |---|---|---|---|---|
@@ -1621,7 +1678,8 @@ See [Section 18](#18-memory-dream-consolidation-system) for full specification.
 | GET | `/api/v1/vault/health` | JWT | 6 | Composite health score |
 | GET | `/api/v1/vault/graph` | JWT | 6 | Nodes + edges for Cytoscape |
 | GET | `/api/v1/vault/index/events` | JWT | 6 | User's recent index events |
-| GET | `/api/v1/vault/links/suggestions/{doc_id}` | JWT | 6 | Link suggestions for a note |
+| GET | `/api/v1/vault/links/suggestions/{doc_id?}` | JWT | 6 | Link suggestions for a note. When `doc_id` is omitted, returns vault-wide top suggestions (highest confidence pairs across all user notes, limit 10). |
+| GET | `/api/v1/vault/index/progress` | JWT | 1 | Returns `{active: bool, current: int, total: int, eta_seconds: int|null}`. Consumed by FooterStatusBar and Home page welcome subtitle. Returns `{active: false}` when no indexing is in progress. |
 | POST | `/api/v1/vault/organize` | JWT | 6 | Dry run suggestions (SmartOrganizer) |
 | POST | `/api/v1/vault/organize/apply` | JWT | 6 | Apply organization plan |
 | POST | `/api/v1/vault/organize/undo` | JWT | 4 | Undo last organization (requires OperationLog from F-AGENT-05) |
@@ -1700,6 +1758,21 @@ The `nodes` and `edges` arrays are in native Cytoscape.js format — the client 
 | POST | `/api/v1/agent/client-response` | JWT | Client responds to client_request SSE event |
 | POST | `/api/v1/agent/approve` | JWT | Approve or reject a pending write tool confirmation |
 
+**`POST /api/v1/agent/approve` request body:**
+{
+  "call_id": "uuid",     // from tool_confirm SSE event
+  "approved": boolean,    // true to proceed, false to reject
+  "reason": string | null // optional rejection reason — fed back to LLM as observation
+}
+
+**`POST /api/v1/agent/client-response` request body:**
+{
+  "request_id": "uuid",         // from client_request SSE event
+  "content_type": "text" | "html" | "url" | "image" | "file_path" | "error",
+  "content": string,             // the payload (text content, base64 image, URL, error message)
+  "error": string | null         // set when content_type is "error" (e.g., timeout, no clipboard data)
+}
+
 ### Web Search (2 endpoints — Phase 5)
 
 | Method | Path | Auth | Notes |
@@ -1728,7 +1801,7 @@ The `nodes` and `edges` arrays are in native Cytoscape.js format — the client 
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| GET | `/api/v1/projects` | JWT | List |
+| GET | `/api/v1/projects` | JWT | Paginated list. Response includes `total: int` field for count queries |
 | POST | `/api/v1/projects` | JWT | Create |
 | PATCH | `/api/v1/projects/{id}` | JWT | Update |
 | DELETE | `/api/v1/projects/{id}` | JWT | Delete |
@@ -1763,6 +1836,11 @@ The `nodes` and `edges` arrays are in native Cytoscape.js format — the client 
 | POST | `/api/v1/settings/api-keys` | JWT | Add/update key |
 | DELETE | `/api/v1/settings/api-keys/{provider}` | JWT | Delete key |
 | POST | `/api/v1/settings/api-keys/{provider}/test` | JWT | Test key validity |
+
+**Settings resolution logic:**
+`GET /api/v1/settings` returns a fully merged settings object: every key from `settings.yaml` with user overrides from `user_settings.settings` JSONB applied on top. Missing user keys fall through to server defaults. Server-only keys (listed in §22 as "not user-overridable") are included in the response but rejected by `PUT /api/v1/settings` if the user attempts to override them (return 400 with detail listing the rejected keys).
+
+`PUT /api/v1/settings` accepts a partial JSONB object — only keys present in the request body are updated. Keys set to `null` are removed (reverts to server default). The response returns the full merged settings after the update.
 
 ### Admin (27 endpoints — Phase 1 users, Phase 2 keys, Phase 6 rest, Phase 7 MCP)
 
@@ -1801,6 +1879,23 @@ The `nodes` and `edges` arrays are in native Cytoscape.js format — the client 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | GET | `/health` | None | Returns setup_required flag when no users |
+
+**Response body:**
+{
+  "status": "ok" | "degraded" | "error",
+  "setup_required": boolean,          // true when no users exist in the database
+  "version": string,                  // backend version string (e.g., "1.0.0")
+  "database": "connected" | "error",
+  "indexing": {
+    "active": boolean,
+    "current": int | null,
+    "total": int | null
+  }
+}
+
+When `setup_required: true`, the client renders the "Create Admin Account" form variant
+on the login page. When false, the standard login form is shown.
+The `indexing` object is consumed by the FooterStatusBar centre zone.
 
 ### Error Response Schema (all endpoints)
 
@@ -1848,7 +1943,8 @@ data: {"type":"client_request","data":{"request_id":"uuid","action":"open_editor
 
 data: {"type":"notification","data":{"title":"3 orphan notes detected","body":"Run cleanOrphans to review.","severity":"info"}}
 
-data: {"type":"done","data":{"usage":{"prompt_tokens":1200,"completion_tokens":450,"cost_usd":0.0034},"title":"Auto-generated title"}}
+data: {"type":"done","data":{"usage":{"prompt_tokens":1200,"completion_tokens":450,"cost_usd":0.0034},"title":"Auto-generated title","suggested_tasks":[{"title":"Run orphan cleanup","action":"cleanOrphans"}]}}
+
 ```
 
 **Event types:** `status`, `citations`, `token`, `tool_start`, `tool_result`, `tool_confirm`, `client_request`, `notification`, `done`
@@ -1864,6 +1960,14 @@ data: {"type":"done","data":{"usage":{"prompt_tokens":1200,"completion_tokens":4
 **`done`** — includes `title` field when the conversation title was auto-generated on first message (null otherwise).
 
 **Citation markers scoping:** Citation markers (`[1]`, `[2]`) are scoped per-message. Each assistant response cites only the RAG sources retrieved for that specific user message. Previous messages' citations are not re-referenced.
+
+**Error handling:**
+- SSE `error` event: `{"type":"error","data":{"code":"PROVIDER_ERROR","message":"OpenAI returned 429: rate limited","retryable":true}}`
+  - `retryable: true` → client shows error message with "Retry" button
+  - `retryable: false` → client shows error message, closes stream
+- If the SSE connection drops (network error, proxy timeout): client does NOT auto-reconnect. The partial response is displayed with an inline "(Connection lost — response may be incomplete)" indicator and a "Retry" button that re-sends the last user message.
+- The stream is not resumable — each `POST /api/v1/chat/completions` is a self-contained request/response cycle. There is no event ID or replay mechanism.
+- **Proxy configuration note:** Reverse proxies (Caddy, nginx) must be configured to disable response buffering for the `/api/v1/chat/completions` endpoint. Caddy: `flush_interval -1`. Nginx: `proxy_buffering off`.
 
 ---
 
@@ -2036,7 +2140,7 @@ The per-mode tool availability table below applies only to **agent loop invocati
 | **Ask** | ragSearch, vaultRead, detectOrphans, suggestLinks, analyzeNote, memoryRecall | #1–6 |
 | **Write** | ragSearch, vaultRead, memoryRecall (RAG scoped to current note) | #1, #2, #6 |
 | **Research** | All 22 built-in tools + all MCP tools | #1–22 + MCP |
-| **Focus** | All read-only tools + frontmatterQuery (RAG scoped to project) | #1–7 |
+| **Focus** | Read-only query tools + frontmatterQuery (RAG scoped to project) | #1–7 |
 | **Custom** | `agent_tools: true` → all 22 built-in + MCP; `agent_tools: false` → read-only only (#1–6) | Configurable |
 
 Tool lists are hardcoded per mode in v1.0. Custom per-mode tool selection is deferred to a future version.
@@ -2182,7 +2286,7 @@ Each chunk receives the same contextual enrichment prefix. For literature notes,
 
 **Frontmatter handling:** YAML frontmatter is stripped before chunking. Frontmatter fields are used only for contextual enrichment (prepended separately) and metadata columns (for filtering). `[[Wikilinks]]` in note body are resolved to plain-text titles before embedding — the double-bracket syntax adds no semantic value to embeddings.
 
-**Configurable parameters** (admin-configurable via Admin Tab 5c — changes trigger full reindex with confirmation):
+**Configurable parameters** (admin-configurable via Admin Admin Tab C — changes trigger full reindex with confirmation):
 
 ```yaml
 rag:
@@ -2485,7 +2589,7 @@ mcp:
   tool_call_timeout_seconds: 60           # Per-tool-call timeout
   health_check_interval_seconds: 60
   max_retries: 5
-  servers: {}                             # Configured via Admin UI (Tab 5h) — see below
+  servers: {}                             # Configured via Admin UI (Admin Tab H) — see below
   # Example server configs (typically managed via UI, not YAML):
   # servers:
   #   web-crawler:
@@ -2505,7 +2609,7 @@ mcp:
 
 **Server-only (not user-overridable):** `server.*`, `vault.*`, `rag.embedding_model`, `rag.embedding_dimensions`, `rag.chunking.*`, `llm.local_endpoints`, `llm.dream_model`, `auth.*`, `memory.dream.*`, `chat_history.max_conversations_per_user`, `mcp.*`
 
-**Admin-configurable via Admin UI (not just settings.yaml):** `rag.chunking.*` (Tab 5c — changes trigger full reindex), `vault.health_weights` and `vault.health_thresholds` (Tab 5g), `server.rate_limit.*` (Tab 5g)
+**Admin-configurable via Admin UI (not just settings.yaml):** `rag.chunking.*` (Admin Tab C — changes trigger full reindex), `vault.health_weights` and `vault.health_thresholds` (Admin Tab G), `server.rate_limit.*` (Admin Tab G)
 
 **User-overridable:** Everything else (RAG weights, top_k, temperature, zettelkasten, agent, mode definitions, etc.)
 
@@ -2525,6 +2629,15 @@ The following keys are stored in the `user_settings.settings` JSONB column. All 
 | `chat_history.include_timestamps` † | boolean | `false` | Include per-message timestamps in vault exports. |
 | `chat_history.project_subfolder` † | boolean | `true` | Organise exported chats into workspace subfolders. |
 | `chat_history.vault_export_folder` † | string | `"Smart Copilot"` | Folder name within vault for exported conversations. |
+| AI Persona Name | Profile → AI & Chat | `ai_persona_name` | string | `"Smart Copilot"` |
+| Default Chat Mode | Profile → AI & Chat | `default_chat_mode` | string | `"ask"` |
+| Default Chat Model | Profile → AI & Chat | `default_chat_model` | string | (from `llm.default_chat_model`) |
+| Vision Model | Profile → AI & Chat | `vision_model` | string | `null` |
+| Temperature | Profile → AI & Chat | `llm.temperature` | float | `0.7` |
+| Max Tokens | Profile → AI & Chat | `llm.max_tokens` | int | `4096` |
+| Reasoning Effort | Profile → AI & Chat | `llm.reasoning_effort` | string | `null` |
+| Confirm before deleting | Profile → Appearance | `confirm_before_deleting` | boolean | `true` |
+| End-of-chat save prompt | Profile → Appearance | `chat_history.end_of_chat_save_prompt` | boolean | `false` |
 
 ---
 
@@ -2598,6 +2711,11 @@ exec python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
 **Worker configuration note:** `--workers 2` is safe because each uvicorn worker process runs an independent asyncpg connection pool. The RLS `SET/RESET app.current_user_id` operates per-connection within each worker's pool — there is no cross-worker connection sharing or context leakage. The `VaultRegistry` in-memory mapping is rebuilt independently in each worker on startup and after user create/delete events.
+
+**APScheduler and multi-worker:** APScheduler must be initialised in only ONE worker process to prevent duplicate job execution. Two approaches:
+1. **Preferred:** Start APScheduler only in worker 0. Use uvicorn's `--worker-class` with a custom lifespan that checks a worker ID environment variable.
+2. **Alternative:** Use `pg_try_advisory_lock` at the start of every scheduled job (not just Dream). The first worker to acquire the lock runs the job; the other skips it.
+The advisory lock approach is already used for Dream (§18) and should be extended to all scheduled tasks: reconciliation, system health snapshots, proactive agent checks, and fleeting note expiry.
 
 ### Run Commands
 
@@ -2699,8 +2817,8 @@ server/
     │   ├── admin.py                 # all admin endpoints
     │   ├── mcp_admin.py             # MCP server CRUD + toggle + reconnect endpoints
     │   └── health.py                # health check
-    ├── models/                      # 16 SQLAlchemy models
-    │   ├── user.py, api_key.py, document.py, chunk.py, wikilink.py,
+    ├── models/                      # 17 SQLAlchemy models
+    │   ├── user.py, api_key.py, session.py, document.py, chunk.py, wikilink.py,
     │   ├── conversation.py, message.py, memory.py, dream_audit_log.py,
     │   ├── project.py, operation_log.py, llm_usage.py, index_event.py,
     │   ├── system_health.py, system_config.py, user_settings.py
@@ -2822,14 +2940,14 @@ All keys are client-only and device-specific. Never synced to the server.
 | `workspace.vaultPaneWidth` | number | `288` | Workspace left pane width in pixels. Persists drag-resize. |
 | `workspace.editorPaneWidth` | number | `450` | Workspace editor panel width in pixels. Persists drag-resize. |
 | `theme.mode` | string | `"auto"` | `'light'` \| `'dark'` \| `'auto'` \| `'custom'`. Phase 7. |
-| `theme.customAccent` | string | `"#4a4bd7"` | Custom accent colour hex. Replaces `--sc-secondary` globally. Phase 7. |
-| `theme.customBackground` | string | `"#FAF9F7"` | Custom background colour hex. Replaces `--sc-color-bg`. Phase 7. |
+| `theme.customAccent` | string | `"#4647d3"` | Custom accent colour hex. Replaces `--sc-secondary` globally. Phase 7. |
+| `theme.customBackground` | string | `"#f6f6f6"` | Custom background colour hex. Replaces `--sc-color-bg`. Phase 7. |
 
 ---
 
 ## 26. UI Pages & Navigation
 
-> **Frontend design authority:** `spec-ui-v1.md` is the canonical reference for all UI implementation decisions: design tokens, component specifications, layout patterns, screen specs, navigation logic, and platform abstraction. This section defines the page inventory, settings field contracts, and API bindings. Where this section and the UI spec conflict, **the UI spec wins for visual/interaction decisions; this section wins for data contracts and API bindings.**
+> **Frontend design authority:** `ui-spec.md` is the canonical reference for all UI implementation decisions: design tokens, component specifications, layout patterns, screen specs, navigation logic, and platform abstraction. This section defines the page inventory, settings field contracts, and API bindings. Where this section and the UI spec conflict, **the UI spec wins for visual/interaction decisions; this section wins for data contracts and API bindings.**
 
 > **Web client:** The React renderer is served from both Electron and FastAPI (Decision 27). All pages in this section are available on both platforms unless marked `(Electron only)`.
 
@@ -3040,7 +3158,7 @@ API: `GET/POST/PATCH/DELETE /api/v1/projects`. (Note: backend endpoint and table
 | | Link suggestion confidence threshold | user_settings | 0.7 | `zettelkasten.link_suggestions.min_confidence`. Range 0–1. |
 | | Link suggestion max count | user_settings | 10 | `zettelkasten.link_suggestions.max_suggestions`. Range 1–50. |
 | **RAG** | | | | |
-| | Contextual enrichment | user_settings | on | `rag.contextual_enrichment`. |
+| | Contextual enrichment | user_settings | on | `rag.context_enrichment`. |
 | | Top-K results | user_settings | 10 | `rag.top_k`. Range 1–50. |
 | | Vector weight | user_settings | 0.5 | `rag.vector_weight`. Must sum to 1.0 with BM25 + Wikilink. |
 | | BM25 weight | user_settings | 0.3 | `rag.bm25_weight`. |
@@ -3196,7 +3314,7 @@ tags:
 
 ### Admin Dashboard Tab Field Specifications
 
-#### Tab 5a — Overview
+#### Admin Tab A — Overview
 
 | Element | Type | Notes |
 |---|---|---|
@@ -3208,12 +3326,12 @@ tags:
 | Active Conversations (7 days) | metric card | Conversations with messages in last 7 days |
 | Index Queue Depth | metric card | Current pending items. Green when 0, yellow when > 0. |
 | System Health Summary | status row | PostgreSQL: ✅ · Watcher: ✅ · Index: idle · Dream: last run 2h ago |
-| Top Users by Cost (30d) | compact table | Username, Cost, Calls — top 5. Links to Tab 5b for full breakdown. |
+| Top Users by Cost (30d) | compact table | Username, Cost, Calls — top 5. Links to Admin Tab B for full breakdown. |
 | Recent Activity | event list | Last 10 system events: user logins, reindex triggers, Dream runs, embedding migrations |
 
 Source: `GET /api/v1/admin/overview` provides all aggregate data.
 
-#### Tab 5b — LLM Usage
+#### Admin Tab B — LLM Usage
 
 | Element | Type | Notes |
 |---|---|---|
@@ -3229,7 +3347,7 @@ Source: `GET /api/v1/admin/overview` provides all aggregate data.
 
 Source: F-ADMIN-02, `llm_usage` table with `key_type` and `purpose` columns.
 
-#### Tab 5c — Storage & Indexing
+#### Admin Tab C — Storage & Indexing
 
 | Element | Type | Notes |
 |---|---|---|
@@ -3257,7 +3375,7 @@ Source: F-ADMIN-02, `llm_usage` table with `key_type` and `purpose` columns.
 
 Source: Decision 20 (embedding migration), F-ADMIN-03, Section 22 "Admin-configurable via Admin UI" note for chunking.
 
-#### Tab 5d — API Keys (shared)
+#### Admin Tab D — API Keys (shared)
 
 | Element | Type | Notes |
 |---|---|---|
@@ -3274,7 +3392,7 @@ Source: Decision 20 (embedding migration), F-ADMIN-03, Section 22 "Admin-configu
 
 Source: Decision 7 (encryption, resolution order), Decision 21 (admin-only for shared keys and local endpoints). `encrypted_key` is never returned — only `display_hint`.
 
-#### Tab 5e — Users
+#### Admin Tab E — Users
 
 | Element | Type | Notes |
 |---|---|---|
@@ -3284,7 +3402,7 @@ Source: Decision 7 (encryption, resolution order), Decision 21 (admin-only for s
 | — Delete user | row action | Requires typed confirmation of username. Deletes user + all DB records. Vault files on disk NOT deleted |
 | + Add User | button | Dialog: username (required), email (optional), temporary password (auto-generated, shown once), role (default: user) |
 
-#### Tab 5f — Memory Dream
+#### Admin Tab F — Memory Dream
 
 | Element | Type | Notes |
 |---|---|---|
@@ -3298,7 +3416,7 @@ Source: Decision 7 (encryption, resolution order), Decision 21 (admin-only for s
 
 Source: Section 18 (Memory Dream system), Decision 18, `dream_audit_log` table. Note: admin can view Dream status and trigger runs but cannot read individual memory content (Decision 21 privacy boundary).
 
-#### Tab 5g — System Health
+#### Admin Tab G — System Health
 
 | Element | Type | Notes |
 |---|---|---|
@@ -3314,7 +3432,7 @@ Source: Section 18 (Memory Dream system), Decision 18, `dream_audit_log` table. 
 | Last backup | text | "Database: 2025-02-14 03:00 · Vault: synced via Syncthing" — read from `/config/backup-status.json` written by the automated backup script. `GET /api/v1/admin/health` reads this file if present |
 | Backup reminder | warning card | Shown if `/config/backup-status.json` is missing or `last_backup` is older than 7 days: "No recent backup detected. See documentation for setup." |
 
-#### Tab 5h — MCP Servers
+#### Admin Tab H — MCP Servers
 
 | Element | Type | Notes |
 |---|---|---|
@@ -3365,12 +3483,12 @@ Note: MCP server configuration is admin-only. Users see MCP-provided tools in th
 
 | Requirement | Implementation |
 |---|---|
-| Data isolation | RLS on all 13 user-scoped tables |
+| Data isolation | RLS on all 14 user-scoped tables |
 | Key encryption | Fernet AES-128 at rest |
 | Token storage | Electron safeStorage (OS keychain) |
 | HTML sanitization | DOMPurify (client) + nh3 (server) |
 | Admin enforcement | API-level `require_admin` dependency |
-| Rate limiting | Per-user sliding window: 30 req/min API, 60 tool calls/min agent. In-memory counter, resets on restart. |
+| Rate limiting | Per-user sliding window: 30 req/min API, 60 tool calls/min agent. Counter stored in a shared dict (e.g., via `multiprocessing.Manager` or a lightweight PostgreSQL counter table). Resets on restart. |
 
 ### Success KPIs (Post-Launch)
 

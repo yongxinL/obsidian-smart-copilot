@@ -225,6 +225,7 @@ Used for section labels (`SOURCES`, `MY VAULT`, `IN SCOPE`, nav group labels):
 | List | `List` |
 | Link | `Link` |
 | Image | `ImageIcon` (imported as `Image as ImageIcon`) |
+| Chat settings popover | `Settings` |
 
 ---
 
@@ -467,6 +468,19 @@ Login form:
 
 **Animation:** `motion/react` — form container `scale 0.95 → 1, opacity 0 → 1`. Feature bullets stagger `0.4s + i*0.1s`.
 
+**Forced Password Change (overlay on login):**
+Triggered when login response includes `must_change_password: true`.
+Layout: Same right-half form area as Login, replaces the login form content.
+- Heading: "Change Your Password" (Space Grotesk 2xl bold)
+- Sub: "Your admin has required a password change."
+- New Password field (Lock icon prefix)
+- Confirm Password field (Lock icon prefix)
+- Submit button: "Set New Password" (same style as login submit)
+- Validation: min 8 chars, passwords must match. Errors shown inline below fields.
+- On success: redirects to Home. On failure: inline error message.
+- API: `POST /api/v1/auth/change-password` with `{current_password: temp_password, new_password}`.
+- No cancel/skip option — this screen blocks all navigation until password is changed.
+
 ---
 
 ### 6.2 Home (Page 2)
@@ -486,10 +500,10 @@ Login form:
 
 | Card | Value | Sub-text | Clickable? |
 |---|---|---|---|
-| Active Workspaces | count from `/api/v1/projects/count` | change % | No |
+| Active Workspaces | count | Derived from `GET /api/v1/projects` response `total` field (paginated list). |
 | Vault Health | health score % | orphan count | Yes → scrolls to Vault Health section |
 | AI Cost (30d) | `$X.XX` from `/api/v1/usage/summary` | ↑X% vs last month | Yes → scrolls to Usage section |
-| My Notes | doc count from `/api/v1/documents/count` | added today | No |
+| My Notes | count | Derived from `GET /api/v1/documents` response `total` field (paginated list with `limit=0`). |
 
 Clickable stat cards: `cursor-pointer hover:shadow-md transition-all`. Scroll uses `scrollIntoView({ behavior: 'smooth' })` after expanding the target section.
 
@@ -512,6 +526,7 @@ Clickable stat cards: `cursor-pointer hover:shadow-md transition-all`. Scroll us
 - Last Dream Run: formatted date
 - "Run Dream now" button (`bg-secondary text-on-secondary rounded-xl`) when `dreamAvailable`
 - API: from `GET /api/v1/status`
+- API: Active count from `GET /api/v1/memories` response `total` field. Dream status from `GET /api/v1/memories/dream/latest`. `dreamAvailable` derived client-side: `last_dream > 24h ago AND sessions_since_dream >= 5`.
 
 **Quick Actions:** `grid grid-cols-2 gap-4`
 - New Chat → navigates to Chat (Page 3)
@@ -563,6 +578,23 @@ Contents:
 
 **Chat Feed:** `flex-1 overflow-y-auto no-scrollbar p-10 bg-[#FAF9F7]`. Messages: `max-w-3xl mx-auto space-y-12`.
 
+**Empty state (no active conversation):**
+Centred vertically in the chat feed area:
+- Smart Copilot logo icon (48px, `text-secondary`)
+- "How can I help you today?" — Space Grotesk, 1.5rem, extrabold
+- Subtitle: "Ask questions about your vault, or start a new conversation." — Inter, 0.875rem, `text-on-surface-variant`
+- 2×2 grid of suggestion cards below (4 contextual prompts derived from recent vault activity or defaults: "Summarise my recent notes", "Find orphan notes", "What did I write about {topic}?", "Help me organise my vault"). Cards: `bg-surface-container-low hover:bg-white border border-surface-container-high rounded-xl p-4 cursor-pointer`.
+- Clicking a suggestion sends it as the first message in a new conversation.
+
+**Mode Pill (above input):**
+When a mode is active, a removable pill appears between the chat feed and the input area:
+`[ {mode icon} {mode name} ✕ ]` — bg: `surface-container-low`, text: `on-surface`, `rounded-full px-3 py-1.5 text-xs font-bold`.
+✕ button clears the mode (reverts to default/Ask behaviour).
+Pill clears automatically after sending a message (prompt-scoped, not sticky).
+
+**Mode Picker:** Triggered by long-pressing the mode pill area or by a dedicated mode button in the toolbar. Shows a dropdown of up to 5 pinned modes + "More modes…" link. Single-select — selecting a new mode replaces the current one.
+Mode definitions come from `GET /api/v1/settings/modes`. First 5 (by user ordering) are pinned.
+
 **Chat Input Area:**
 
 ```
@@ -582,12 +614,14 @@ Toolbar left buttons (all use `CommandPaletteMenu` popup):
 
 | Icon | Tooltip | Menu |
 |---|---|---|
-| `Globe` | Web Search | ExaMCP / Google / Bing / Baidu — each with "Free" badge |
+| `Globe` | Web Search | Free: DuckDuckGo, Jina Reader, Wikipedia (always available). Paid: Tavily, Brave, SerpAPI (shown only when API key configured, badge: "API Key"). Each item: provider name + badge. Toggle: ON/OFF state mapped to `web_search_enabled` in ChatCompletionRequest. |
 | `Cpu` | MCP Servers | Disable: No MCP tools / Auto: AI discovers tools / Manual: Select specific |
 | `Layers` | Select Model | List from `GET /api/v1/models`, grouped by provider |
 | `Quote` | Quick Phrase | Phrases from `user_settings.quick_phrases` + "+ Add Phrase..." |
 | `Trash2` | Clear | Opens Clear Chat modal |
 | `Maximize2` / `Minimize2` | Expand / Compress | Toggles textarea height |
+| `Settings` | Chat Settings | Popover: system prompt override (textarea), temperature (slider 0–2), max tokens (number), top-P (slider 0–1), frequency penalty (slider 0–2), reasoning effort (dropdown, model-dependent). Per-message overrides. |
+| `MoreHorizontal` | More Options | Drawer: web search toggle, relevant notes toggle, agent tools toggle (hidden when mode disables), file attachment button, image upload button. |
 
 Send button: `bg-secondary text-on-secondary h-10 w-10 rounded-xl shadow-lg shadow-secondary/20 hover:bg-secondary-dim`
 
