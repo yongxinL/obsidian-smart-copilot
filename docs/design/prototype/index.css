@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-headline: "Space Grotesk", sans-serif;
+  --font-body: "Inter", sans-serif;
+
+  /* Primary & Secondary - Electric Kinetic */
+  --color-primary: #b30066;
+  --color-primary-dim: #990058;
+  --color-secondary: #4647d3;
+  --color-secondary-dim: #3836b8;
+  --color-tertiary: #a8a8ff;
+
+  /* Surface Hierarchy */
+  --color-background: #f6f6f6;
+  --color-surface: #f6f6f6;
+  --color-surface-dim: #d2d5d5;
+  --color-surface-container: #f0f1f1;
+  --color-surface-container-low: #f0f1f1;
+  --color-surface-container-high: #dbdddd;
+  --color-surface-container-highest: #dbdddd;
+  --color-surface-container-lowest: #ffffff;
+
+  /* On Surface */
+  --color-on-surface: #2d2f2f;
+  --color-on-surface-variant: #5a5b5c;
+  --color-inverse-surface: #2d2f2f;
+  --color-on-primary: #ffeff2;
+  --color-on-secondary: #ffffff;
+  --color-on-tertiary: #1a1a2e;
+
+  /* Containers */
+  --color-primary-container: #ff6eab;
+  --color-on-primary-container: #3d0022;
+  --color-secondary-container: #cecdff;
+  --color-on-secondary-container: #302ebf;
+  --color-tertiary-container: #a8a8ff;
+  --color-on-tertiary-container: #1a1a2e;
+
+  /* Utility */
+  --color-outline-variant: #acadad;
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface font-body antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-headline;
+  }
+}
+
+/* Custom Utilities */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

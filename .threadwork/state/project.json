@@ -1,6 +1,6 @@
 {
   "_version": "0.3.0",
-  "_updated": "2026-04-12T12:09:05.613Z",
+  "_updated": "2026-04-14T23:18:15.403Z",
   "projectName": "Smart Copilot",
   "techStack": "FastAPI + Python",
   "currentPhase": 0,
@@ -17,5 +17,6 @@
   "qualityConfig": {
     "minCoverage": 80,
     "lintLevel": "strict"
-  }
+  },
+  "_frameworkUpdatedAt": "2026-04-14T23:18:15.404Z"
 }
