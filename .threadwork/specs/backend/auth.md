@@ -1,105 +1,64 @@
 ---
 domain: backend
 name: auth
-updated: 2025-01-01
-confidence: 0.9
-tags: [auth, jwt, security, tokens, passwords, sessions]
+updated: 2026-04-15
+confidence: 1.0
+tags: [auth, jwt, security, tokens, passwords, python, fastapi]
 ---
 # Authentication Standards
 
-## Rule: Use jose for JWT operations (not jsonwebtoken)
+> Source: PRD Decisions 21, 23, 24; F-AUTH-01, F-AUTH-02
 
-`jose` is the recommended JWT library for modern JS/TS runtimes (works in Edge, Cloudflare Workers, Deno, and Node).
-`jsonwebtoken` is Node.js-only and uses synchronous crypto.
+## Rule: Use python-jose for JWT operations
 
-```typescript
-// ✅ Correct: use jose
-import { SignJWT, jwtVerify } from 'jose';
+The backend uses `python-jose` for stateless JWT authentication. Access tokens: 24h. Refresh tokens: 30d. Both configurable via settings.yaml.
 
-const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+```python
+# ✅ Correct: python-jose
+from jose import jwt, JWTError
 
-export async function signToken(payload: Record<string, unknown>): Promise<string> {
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('1h')
-    .sign(secret);
-}
-
-export async function verifyToken(token: string) {
-  const { payload } = await jwtVerify(token, secret);
-  return payload;
-}
+def create_access_token(user_id: UUID, secret: str, expires_minutes: int = 1440) -> str:
+    payload = {"sub": str(user_id), "exp": datetime.utcnow() + timedelta(minutes=expires_minutes)}
+    return jwt.encode(payload, secret, algorithm="HS256")
 ```
 
-```typescript
-// ❌ Anti-pattern: avoid jsonwebtoken
-import jwt from 'jsonwebtoken'; // sync, Node.js only
+## Rule: Store tokens in Electron safeStorage, not localStorage
+
+Electron safeStorage uses OS-level encryption (macOS Keychain, Windows DPAPI). Tokens are never stored in localStorage or cookies.
+
+CSRF protection is not implemented because the API uses `Authorization: Bearer` headers exclusively (not cookies). If the API is ever exposed to a browser-based client, CSRF protection must be added.
+
+## Rule: Unprotected routes are explicitly listed
+
+Only these routes require no JWT: `GET /health`, `POST /api/v1/auth/login`, `POST /api/v1/auth/register` (first user only), `POST /api/v1/auth/refresh`.
+
+## Rule: Two roles only — admin and user
+
+First user = admin. `require_admin` FastAPI dependency for admin-only endpoints. No custom role hierarchies.
+
+```python
+async def require_admin(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 ```
 
----
+## Rule: Hash passwords with bcrypt
 
-## Rule: Store JWTs in httpOnly cookies, not localStorage
+Never store plaintext passwords. Use bcrypt with adequate cost factor.
 
-httpOnly cookies are not accessible from JavaScript — they prevent XSS token theft.
-localStorage is readable by any script on the page.
+## Rule: RLS SET/RESET every database session
 
-```typescript
-// ✅ Correct: httpOnly cookie
-response.cookies.set('auth-token', token, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
-  maxAge: 60 * 60, // 1 hour in seconds
-  path: '/',
-});
-```
+Every route handler uses `Depends(get_db)` which sets and resets `app.current_user_id`. RESET must be in the `finally` block. Background tasks use `get_db_session(user_id)` directly.
 
-```typescript
-// ❌ Anti-pattern: localStorage
-localStorage.setItem('token', token); // XSS vulnerable
-```
-
----
-
-## Rule: Always hash passwords with bcrypt (cost factor ≥ 12)
-
-Never store plaintext passwords. Never use MD5, SHA1, or SHA256 for passwords — they are not password-specific.
-
-```typescript
-// ✅ Correct
-import bcrypt from 'bcryptjs';
-
-const SALT_ROUNDS = 12;
-
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, SALT_ROUNDS);
-}
-
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
-}
-```
-
----
-
-## Rule: Implement refresh token rotation
-
-Access tokens should be short-lived (15min–1h). Refresh tokens should be rotated on each use (prevents token reuse after theft).
-
-```typescript
-// ✅ Correct pattern: invalidate old refresh token, issue new one
-async function refreshTokens(refreshToken: string) {
-  const stored = await db.refreshToken.findUnique({ where: { token: refreshToken } });
-  if (!stored || stored.expiresAt < new Date()) throw new Error('Invalid refresh token');
-
-  // Rotate: delete old, create new
-  await db.refreshToken.delete({ where: { id: stored.id } });
-  const newRefreshToken = await db.refreshToken.create({
-    data: { userId: stored.userId, expiresAt: addDays(new Date(), 30) }
-  });
-
-  const accessToken = await signToken({ sub: stored.userId });
-  return { accessToken, refreshToken: newRefreshToken.token };
-}
+```python
+@asynccontextmanager
+async def get_db_session(user_id: UUID):
+    async with async_session_factory() as session:
+        await session.execute(text("SET app.current_user_id = :uid"), {"uid": str(user_id)})
+        try:
+            yield session; await session.commit()
+        except: await session.rollback(); raise
+        finally:
+            await session.execute(text("RESET app.current_user_id"))
 ```
