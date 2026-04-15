@@ -16,6 +16,8 @@
   "model_switch_policy": "notify",
   "teamMode": "auto",
   "maxWorkers": "auto",
+  "verificationType": "smart-copilot-phase1",
+  "autonomyLevel": "guided",
   "qualityConfig": {
     "minCoverage": 80,
     "lintLevel": "strict"

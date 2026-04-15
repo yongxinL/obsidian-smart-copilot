@@ -43,9 +43,26 @@ async def require_admin(current_user: User = Depends(get_current_user)):
     return current_user
 ```
 
-## Rule: Hash passwords with bcrypt
+## Rule: Hash passwords with argon2-cffi
 
-Never store plaintext passwords. Use bcrypt with adequate cost factor.
+Never store plaintext passwords. Use `argon2-cffi` directly (not via passlib). argon2-cffi's API is straightforward; the passlib wrapper adds unnecessary abstraction.
+
+```python
+# ✅ Correct: argon2-cffi directly
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
+
+ph = PasswordHasher()
+
+def hash_password(password: str) -> str:
+    return ph.hash(password)
+
+def verify_password(password: str, hash: str) -> bool:
+    try:
+        return ph.verify(hash, password)
+    except VerifyMismatchError:
+        return False
+```
 
 ## Rule: RLS SET/RESET every database session
 
