@@ -1,0 +1,61 @@
+<plan id="PLAN-1-2" phase="1" milestone="1">
+  <title>Authentication System — JWT, User Registration, Admin Management</title>
+  <requirements>REQ-003, REQ-004</requirements>
+  <tasks>
+    <task id="T-1-2-1">
+      <description>Create auth service modules: jwt.py (python-jose: create_access_token, create_refresh_token, verify_token with HS256, configurable expiry from settings), password.py (argon2-cffi: hash_password, verify_password — no passlib wrapper), middleware.py (get_current_user from JWT Bearer header, require_admin dependency). Wire get_current_user and require_admin into dependencies.py exports. Create auth Pydantic schemas: LoginRequest, LoginResponse (access_token, refresh_token, user), RegisterRequest, ChangePasswordRequest, RefreshRequest, UserResponse, SessionResponse.</description>
+      <files>server/app/auth/__init__.py, server/app/auth/jwt.py, server/app/auth/password.py, server/app/auth/middleware.py, server/app/schemas/auth.py</files>
+      <verification>JWT round-trip: create → verify succeeds. argon2-cffi hash → verify succeeds. get_current_user rejects invalid tokens. require_admin rejects non-admin users.</verification>
+      <done-condition>Auth service modules importable and unit-testable in isolation</done-condition>
+      <token-estimate>12000</token-estimate>
+      <complexity score="14" tier="STANDARD" confidence="88" model="sonnet">
+        <dimension name="scope" score="2" rationale="5 files across auth/ and schemas/" />
+        <dimension name="integration" score="2" rationale="python-jose, argon2-cffi" />
+        <dimension name="infrastructure" score="1" rationale="Code only" />
+        <dimension name="knowledge" score="2" rationale="JWT patterns, argon2 API" />
+        <dimension name="risk" score="3" rationale="Auth is security-critical" />
+        <dimension name="testing" score="1" rationale="Unit tests only at this stage" />
+        <dimension name="decomposability" score="1" rationale="Each module independent" />
+        <multipliers applied="security-sensitive" adjusted="1.2x" />
+        <integration-hints worktree="false" context-budget="10240" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-2-2">
+      <description>Create auth API endpoints (9 total): POST /api/v1/auth/register (first user = admin, subsequent blocked when allow_registration=false), POST /api/v1/auth/login (returns tokens + user, sets must_change_password flag), POST /api/v1/auth/refresh (rotate refresh token, hash stored in sessions table), POST /api/v1/auth/change-password (requires current password), GET /api/v1/auth/me (returns user profile), PATCH /api/v1/auth/me (update email, display_name, title), PATCH /api/v1/auth/me/avatar (stub — returns 501 for Phase 1), GET /api/v1/auth/sessions (list active sessions), DELETE /api/v1/auth/sessions/{id} (revoke session, cannot revoke own current session). Thin route handlers calling service functions. Register creates vault directory at {vault.base_path}/private/{username}/.</description>
+      <files>server/app/api/auth.py</files>
+      <verification>Register → login → refresh → change-password flow completes. First user gets admin role. Subsequent register blocked. must_change_password flag returned correctly. Session revocation works.</verification>
+      <done-condition>All 9 auth endpoints functional, first-user admin bootstrap works, refresh token rotation stores hash in sessions table</done-condition>
+      <token-estimate>18000</token-estimate>
+      <complexity score="17" tier="COMPLEX" confidence="82" model="opus">
+        <dimension name="scope" score="2" rationale="1 file but 9 endpoints with distinct logic" />
+        <dimension name="integration" score="2" rationale="JWT, argon2, sessions table, vault directory creation" />
+        <dimension name="infrastructure" score="1" rationale="Code only" />
+        <dimension name="knowledge" score="2" rationale="Refresh token rotation, session management" />
+        <dimension name="risk" score="3" rationale="Auth security, first-user bootstrap is tricky" />
+        <dimension name="testing" score="2" rationale="Each endpoint needs integration test" />
+        <dimension name="decomposability" score="2" rationale="9 endpoints are individually testable but share auth state" />
+        <multipliers applied="security-sensitive" adjusted="1.2x" />
+        <integration-hints worktree="false" context-budget="16384" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-2-3">
+      <description>Create admin user management endpoints: GET /api/v1/admin/users (list with stats), POST /api/v1/admin/users (create user with auto-generated temp password, must_change_password=true, create vault directory), PATCH /api/v1/admin/users/{id} (update role/email, cannot change own role, username immutable), POST /api/v1/admin/users/{id}/reset-password (generate temp password, shown once), DELETE /api/v1/admin/users/{id} (requires typed username confirmation, deletes DB records NOT vault files). All behind Depends(require_admin). Create admin Pydantic schemas: UserCreateAdmin, UserUpdateAdmin, UserListResponse, PasswordResetResponse.</description>
+      <files>server/app/api/admin.py, server/app/schemas/admin.py</files>
+      <verification>Admin can create users, reset passwords, change roles. Non-admin gets 403. Self-role-change blocked. Delete requires confirmation. Vault directory created on user creation.</verification>
+      <done-condition>All 5 admin user endpoints functional behind require_admin, temp passwords generated correctly, vault directories created</done-condition>
+      <token-estimate>12000</token-estimate>
+      <complexity score="14" tier="STANDARD" confidence="85" model="sonnet">
+        <dimension name="scope" score="2" rationale="2 files, 5 endpoints" />
+        <dimension name="integration" score="1" rationale="Only internal dependencies" />
+        <dimension name="infrastructure" score="1" rationale="Code + filesystem mkdir" />
+        <dimension name="knowledge" score="2" rationale="Admin guard patterns, self-demotion prevention" />
+        <dimension name="risk" score="3" rationale="Admin operations, user deletion" />
+        <dimension name="testing" score="2" rationale="Permission boundary tests needed" />
+        <dimension name="decomposability" score="1" rationale="Endpoints independent" />
+        <multipliers applied="security-sensitive" adjusted="1.2x" />
+        <integration-hints worktree="false" context-budget="10240" github-artifact="none" />
+      </complexity>
+    </task>
+  </tasks>
+  <dependencies>PLAN-1-2 depends on PLAN-1-1 (needs app skeleton, models, migration, dependencies.py)</dependencies>
+</plan>

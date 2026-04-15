@@ -1,0 +1,61 @@
+<plan id="PLAN-1-6" phase="1" milestone="1">
+  <title>Integration Tests + Verification Suite</title>
+  <requirements>REQ-001, REQ-002, REQ-003, REQ-004, REQ-005</requirements>
+  <tasks>
+    <task id="T-1-6-1">
+      <description>Create test infrastructure: conftest.py with fixtures for real PostgreSQL test database (create/drop per session), async database session fixture, httpx AsyncClient fixture pointing at FastAPI test app, test user factory (admin + regular user), test vault directory setup/teardown. pyproject.toml [tool.pytest.ini_options] with asyncio_mode = "auto". No @pytest.mark.asyncio decorators. Docker Compose test file for spinning up PostgreSQL in CI.</description>
+      <files>server/tests/__init__.py, server/tests/conftest.py, server/tests/factories.py, server/docker-compose.test.yml</files>
+      <verification>pytest discovers tests. Test database created/destroyed per session. Fixtures provide authenticated client instances for admin and regular user.</verification>
+      <done-condition>pytest --co lists all test files, fixtures work, test DB lifecycle clean</done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="13" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope" score="2" rationale="4 files" />
+        <dimension name="integration" score="2" rationale="Real PostgreSQL, httpx AsyncClient, Alembic migrations in test" />
+        <dimension name="infrastructure" score="2" rationale="Test database lifecycle, Docker Compose" />
+        <dimension name="knowledge" score="2" rationale="pytest-asyncio auto mode, async fixture patterns" />
+        <dimension name="risk" score="1" rationale="Test infrastructure only" />
+        <dimension name="testing" score="2" rationale="Meta: testing the test infrastructure" />
+        <dimension name="decomposability" score="1" rationale="Fixtures independent" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-6-2">
+      <description>Create auth integration tests: test_auth.py — full auth flow: register first admin → login → verify JWT → refresh token → change password → login with new password. must_change_password flag enforcement. Subsequent register blocked (403). Session creation and revocation. Non-admin 403 on admin endpoints. Create RLS isolation tests: test_rls.py — create two users (Alice, Bob). Alice creates documents, conversations, memories. Bob queries same tables → sees zero of Alice's private data. Both see shared namespace content. Verify SET/RESET cycle: after request, connection has no app.current_user_id set.</description>
+      <files>server/tests/test_auth.py, server/tests/test_rls.py</files>
+      <verification>All auth flow tests pass. RLS isolation proven: user A cannot see user B's private data. Shared data visible to both. No RLS context leak between requests.</verification>
+      <done-condition>Auth flow tests cover all 9 endpoints. RLS tests prove complete isolation across all RLS-protected tables. Zero false positives.</done-condition>
+      <token-estimate>15000</token-estimate>
+      <complexity score="17" tier="COMPLEX" confidence="82" model="opus">
+        <dimension name="scope" score="2" rationale="2 test files, covering 14+ RLS tables" />
+        <dimension name="integration" score="2" rationale="Full app stack via httpx" />
+        <dimension name="infrastructure" score="1" rationale="Code only (uses test infra from T-1-6-1)" />
+        <dimension name="knowledge" score="3" rationale="RLS testing patterns, connection pool behavior" />
+        <dimension name="risk" score="3" rationale="These tests ARE the security verification" />
+        <dimension name="testing" score="3" rationale="Extensive: every auth edge case, every RLS table" />
+        <dimension name="decomposability" score="1" rationale="Auth and RLS tests independent" />
+        <multipliers applied="security-sensitive" adjusted="1.2x" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-6-3">
+      <description>Create watcher + parser tests: test_vault.py — VaultRegistry resolves private/shared/unknown paths correctly. Registry refreshes after user creation. test_parser.py — parser extracts frontmatter (YAML with type, tags, title), wikilinks ([[target]], [[target|alias]]), body content. NoteTypeClassifier infers correctly from frontmatter, folder, tags, defaults. test_indexer.py — file create → document record in DB with correct content_hash, note_type, wikilinks. File modify → record updated. File delete → record removed. Debounce prevents double processing. test_docker.py — Docker smoke test: build image, start container, GET /health returns 200 with setup_required=true, create admin, GET /health returns setup_required=false.</description>
+      <files>server/tests/test_vault.py, server/tests/test_parser.py, server/tests/test_indexer.py, server/tests/test_docker.py</files>
+      <verification>All vault/parser/indexer tests pass. Docker smoke test passes. Edge cases covered: empty files, files without frontmatter, nested wikilinks, unicode filenames.</verification>
+      <done-condition>VaultRegistry, parser, NoteTypeClassifier, indexer, and Docker container all verified via automated tests</done-condition>
+      <token-estimate>12000</token-estimate>
+      <complexity score="13" tier="STANDARD" confidence="82" model="sonnet">
+        <dimension name="scope" score="2" rationale="4 test files covering 4 modules" />
+        <dimension name="integration" score="2" rationale="Filesystem, watchdog, Docker" />
+        <dimension name="infrastructure" score="2" rationale="Docker build/run in test, temp directories" />
+        <dimension name="knowledge" score="2" rationale="watchdog test patterns, Docker-in-Docker" />
+        <dimension name="risk" score="1" rationale="Test code only" />
+        <dimension name="testing" score="2" rationale="Edge case coverage for parsers" />
+        <dimension name="decomposability" score="1" rationale="Each test file independent" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="10240" github-artifact="none" />
+      </complexity>
+    </task>
+  </tasks>
+  <dependencies>PLAN-1-6 depends on PLAN-1-2 (auth endpoints) and PLAN-1-3 (watcher + parser)</dependencies>
+</plan>

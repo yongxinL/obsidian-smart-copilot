@@ -1,0 +1,25 @@
+<plan id="PLAN-1-4" phase="1" milestone="1">
+  <title>API Stubs + Workspace CRUD Shell</title>
+  <requirements>REQ-001</requirements>
+  <tasks>
+    <task id="T-1-4-1">
+      <description>Create Workspace/Projects CRUD endpoints (UI-only shell, no RAG scoping): GET /api/v1/projects (paginated list with total count), POST /api/v1/projects (create workspace: name required, description, include_folders, exclude_folders, tags, system_prompt, default_model_id), PATCH /api/v1/projects/{id} (update), DELETE /api/v1/projects/{id} (delete). All behind JWT auth, RLS-scoped to current user. Create stub endpoints: GET /api/v1/models (returns empty list — wired Phase 2), GET /api/v1/models/embedding (returns empty list), GET /api/v1/settings (returns 501 — wired Phase 2), PUT /api/v1/settings (returns 501). Create Pydantic schemas for projects and common pagination.</description>
+      <files>server/app/api/projects.py, server/app/api/models.py, server/app/api/settings.py, server/app/schemas/project.py, server/app/schemas/common.py, server/app/schemas/models.py, server/app/schemas/settings.py</files>
+      <verification>Projects CRUD works end-to-end. Stub endpoints return expected status codes. Pagination includes total count. RLS isolation verified.</verification>
+      <done-condition>Workspace CRUD operational, stubs return correct status codes, all routes registered in main.py</done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="10" tier="SIMPLE" confidence="90" model="haiku">
+        <dimension name="scope" score="2" rationale="7 files but mostly boilerplate CRUD" />
+        <dimension name="integration" score="1" rationale="Internal only" />
+        <dimension name="infrastructure" score="1" rationale="Code only" />
+        <dimension name="knowledge" score="1" rationale="Standard FastAPI CRUD" />
+        <dimension name="risk" score="1" rationale="UI-only shell, no data processing" />
+        <dimension name="testing" score="2" rationale="CRUD + pagination tests" />
+        <dimension name="decomposability" score="1" rationale="Each endpoint set independent" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
+      </complexity>
+    </task>
+  </tasks>
+  <dependencies>PLAN-1-4 depends on PLAN-1-1 (needs app skeleton, models, dependencies.py)</dependencies>
+</plan>

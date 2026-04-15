@@ -1,0 +1,97 @@
+<plan id="PLAN-1-1" phase="1" milestone="1">
+  <title>Backend Foundation — Project Scaffolding, Docker, Database Schema</title>
+  <requirements>REQ-001, REQ-002</requirements>
+  <tasks>
+    <task id="T-1-1-1">
+      <description>Create Python project structure: pyproject.toml (pytest asyncio_mode=auto, package metadata), requirements.txt (pinned to minor versions: fastapi, uvicorn, sqlalchemy, asyncpg, psycopg2-binary, alembic, python-jose, argon2-cffi, cryptography, pydantic, pydantic-settings[yaml], pyyaml, watchdog, markdown-it-py, python-frontmatter, xxhash, nh3, httpx), Makefile (test, build, docker-build targets), settings.yaml with full server configuration reference from PRD Section 22.</description>
+      <files>server/pyproject.toml, server/requirements.txt, server/Makefile, server/config/settings.yaml</files>
+      <verification>pip install -r requirements.txt succeeds. make targets defined. settings.yaml matches PRD Section 22 structure.</verification>
+      <done-condition>All dependencies installable, settings.yaml loadable by pydantic-settings</done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="11" tier="SIMPLE" confidence="90" model="haiku">
+        <dimension name="scope" score="1" rationale="4 config/manifest files" />
+        <dimension name="integration" score="2" rationale="Many pinned dependencies to resolve" />
+        <dimension name="infrastructure" score="2" rationale="New project from scratch" />
+        <dimension name="knowledge" score="1" rationale="Standard Python project setup" />
+        <dimension name="risk" score="2" rationale="Pin versions wrong = cascading failures" />
+        <dimension name="testing" score="1" rationale="No tests for scaffolding" />
+        <dimension name="decomposability" score="1" rationale="Straightforward sequential" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-1-2">
+      <description>Create FastAPI application skeleton: main.py (app factory, CORS, router includes, logging.config.dictConfig with JSON formatter for prod / plain for dev, startup/shutdown lifespan), config.py (pydantic-settings with custom YamlSettingsSource, env var overrides, typed Settings class matching settings.yaml), dependencies.py (get_db_session with SET/RESET app.current_user_id in finally block, get_db dependency, get_current_user, require_admin), encryption.py (Fernet encrypt/decrypt from ENCRYPTION_KEY env var).</description>
+      <files>server/app/__init__.py, server/app/main.py, server/app/config.py, server/app/dependencies.py, server/app/encryption.py</files>
+      <verification>FastAPI app starts, GET /health returns 200, config loads from settings.yaml + env overrides, logging outputs JSON in production mode.</verification>
+      <done-condition>uvicorn app.main:app starts without error, settings singleton accessible, get_db_session SET/RESET cycle works</done-condition>
+      <token-estimate>15000</token-estimate>
+      <complexity score="15" tier="STANDARD" confidence="85" model="sonnet">
+        <dimension name="scope" score="2" rationale="5 interconnected core files" />
+        <dimension name="integration" score="2" rationale="pydantic-settings YAML source, asyncpg, Fernet" />
+        <dimension name="infrastructure" score="1" rationale="Code only" />
+        <dimension name="knowledge" score="2" rationale="pydantic-settings YAML custom source requires research" />
+        <dimension name="risk" score="3" rationale="RLS session management is security-critical" />
+        <dimension name="testing" score="1" rationale="Tested via integration tests in PLAN-1-6" />
+        <dimension name="decomposability" score="1" rationale="Each file independent" />
+        <multipliers applied="security-sensitive" adjusted="1.2x" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-1-3">
+      <description>Create Docker infrastructure: Dockerfile (FROM pgvector/pgvector:pg16, Python 3.12, supervisord, app copy, requirements install, HEALTHCHECK), supervisord.conf (nodaemon=true, postgresql program priority=10, fastapi program priority=20), wait-for-pg.sh (pg_isready polling, alembic upgrade head, exec uvicorn --workers 2).</description>
+      <files>server/Dockerfile, server/supervisord.conf, server/scripts/wait-for-pg.sh</files>
+      <verification>docker build succeeds. docker run starts both PostgreSQL and FastAPI. GET /health returns 200 within 30 seconds. Container survives PostgreSQL restart.</verification>
+      <done-condition>docker run -d -p 8000:8000 -e ENCRYPTION_KEY=test smart-copilot:latest → GET /health 200 within 30s</done-condition>
+      <token-estimate>8000</token-estimate>
+      <complexity score="13" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope" score="1" rationale="3 infrastructure files" />
+        <dimension name="integration" score="2" rationale="PostgreSQL, pgvector, supervisord" />
+        <dimension name="infrastructure" score="3" rationale="Docker container with process management" />
+        <dimension name="knowledge" score="2" rationale="supervisord + pg_isready patterns" />
+        <dimension name="risk" score="2" rationale="Container stability affects all subsequent work" />
+        <dimension name="testing" score="1" rationale="Smoke test only" />
+        <dimension name="decomposability" score="1" rationale="3 files, clear boundaries" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-1-4">
+      <description>Create all 17 SQLAlchemy 2.0 async ORM models matching PRD Section 5 exactly: User, ApiKey, Document, Chunk, Wikilink, Conversation, Message, Memory, DreamAuditLog, Project, OperationLog, LlmUsage, IndexEvent, SystemHealth, SystemConfig, UserSettings, Session. All models declare __tablename__ explicitly. UUID primary keys via gen_random_uuid(). Nullable embedding columns (vector type). Generated tsvector column on chunks. All indexes (HNSW, GIN, composite). Create single Alembic initial migration covering all 17 tables, all indexes, and all 14 RLS policies. Alembic env.py uses synchronous psycopg2 URL (rewritten from asyncpg DATABASE_URL). system_config seeded with embedding model defaults.</description>
+      <files>server/app/models/__init__.py, server/app/models/user.py, server/app/models/api_key.py, server/app/models/session.py, server/app/models/document.py, server/app/models/chunk.py, server/app/models/wikilink.py, server/app/models/conversation.py, server/app/models/message.py, server/app/models/memory.py, server/app/models/dream_audit_log.py, server/app/models/project.py, server/app/models/operation_log.py, server/app/models/llm_usage.py, server/app/models/index_event.py, server/app/models/system_health.py, server/app/models/system_config.py, server/app/models/user_settings.py, server/alembic.ini, server/alembic/env.py, server/alembic/versions/001_create_initial_schema.py</files>
+      <verification>alembic upgrade head succeeds against clean PostgreSQL. All 17 tables created. All 14 RLS policies active. HNSW and GIN indexes present. system_config seeded. alembic downgrade base reverses cleanly.</verification>
+      <done-condition>Full schema deployed via single migration, RLS policies verified via \dp+ in psql, system_config contains embedding defaults</done-condition>
+      <token-estimate>28000</token-estimate>
+      <complexity score="19" tier="COMPLEX" confidence="85" model="opus">
+        <dimension name="scope" score="3" rationale="21 files: 18 model files + alembic.ini + env.py + migration" />
+        <dimension name="integration" score="2" rationale="SQLAlchemy async + Alembic sync driver mismatch" />
+        <dimension name="infrastructure" score="3" rationale="Full database schema creation" />
+        <dimension name="knowledge" score="3" rationale="RLS policies, pgvector types, generated tsvector, advisory locks" />
+        <dimension name="risk" score="3" rationale="Schema errors cascade to all features" />
+        <dimension name="testing" score="2" rationale="Migration up/down test needed" />
+        <dimension name="decomposability" score="3" rationale="Single migration = monolithic, FK dependencies between models" />
+        <multipliers applied="security-sensitive" adjusted="1.2x" />
+        <integration-hints worktree="false" context-budget="24576" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-1-5">
+      <description>Create health endpoint: GET /health (no auth) returning {status, setup_required, version, database, indexing}. setup_required = true when no users in database. Database connectivity check. Indexing stub (always {active: false}). Wire into main.py router.</description>
+      <files>server/app/api/health.py, server/app/schemas/health.py</files>
+      <verification>GET /health returns 200 with correct schema. setup_required true on empty DB, false after user creation.</verification>
+      <done-condition>Health endpoint works without auth, returns correct setup_required flag</done-condition>
+      <token-estimate>4000</token-estimate>
+      <complexity score="7" tier="SIMPLE" confidence="95" model="haiku">
+        <dimension name="scope" score="1" rationale="2 files" />
+        <dimension name="integration" score="1" rationale="Direct DB query only" />
+        <dimension name="infrastructure" score="1" rationale="Code only" />
+        <dimension name="knowledge" score="1" rationale="Simple endpoint" />
+        <dimension name="risk" score="1" rationale="Read-only, no auth" />
+        <dimension name="testing" score="1" rationale="Minimal" />
+        <dimension name="decomposability" score="1" rationale="Self-contained" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="4096" github-artifact="none" />
+      </complexity>
+    </task>
+  </tasks>
+  <dependencies>None — this is the foundation plan</dependencies>
+</plan>

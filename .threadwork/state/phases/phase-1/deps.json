@@ -1,0 +1,55 @@
+{
+  "phase": 1,
+  "milestone": 1,
+  "plans": {
+    "PLAN-1-1": {
+      "title": "Backend Foundation — Project Scaffolding, Docker, Database Schema",
+      "depends_on": [],
+      "wave": 1,
+      "tasks": ["T-1-1-1", "T-1-1-2", "T-1-1-3", "T-1-1-4", "T-1-1-5"],
+      "total_tokens": 65000
+    },
+    "PLAN-1-2": {
+      "title": "Authentication System — JWT, User Registration, Admin Management",
+      "depends_on": ["PLAN-1-1"],
+      "wave": 2,
+      "tasks": ["T-1-2-1", "T-1-2-2", "T-1-2-3"],
+      "total_tokens": 42000
+    },
+    "PLAN-1-3": {
+      "title": "File Watcher + Indexing Pipeline (Metadata Only)",
+      "depends_on": ["PLAN-1-1"],
+      "wave": 2,
+      "tasks": ["T-1-3-1", "T-1-3-2", "T-1-3-3", "T-1-3-4"],
+      "total_tokens": 45000
+    },
+    "PLAN-1-4": {
+      "title": "API Stubs + Workspace CRUD Shell",
+      "depends_on": ["PLAN-1-1"],
+      "wave": 2,
+      "tasks": ["T-1-4-1"],
+      "total_tokens": 10000
+    },
+    "PLAN-1-5": {
+      "title": "Electron Shell + Login Page + Auth Flow",
+      "depends_on": ["PLAN-1-2"],
+      "wave": 3,
+      "tasks": ["T-1-5-1", "T-1-5-2", "T-1-5-3"],
+      "total_tokens": 41000
+    },
+    "PLAN-1-6": {
+      "title": "Integration Tests + Verification Suite",
+      "depends_on": ["PLAN-1-2", "PLAN-1-3"],
+      "wave": 3,
+      "tasks": ["T-1-6-1", "T-1-6-2", "T-1-6-3"],
+      "total_tokens": 37000
+    }
+  },
+  "waves": [
+    { "wave": 1, "plans": ["PLAN-1-1"], "description": "Foundation — can't parallelize" },
+    { "wave": 2, "plans": ["PLAN-1-2", "PLAN-1-3", "PLAN-1-4"], "description": "Auth + Watcher + Stubs — parallel" },
+    { "wave": 3, "plans": ["PLAN-1-5", "PLAN-1-6"], "description": "Electron + Tests — parallel" }
+  ],
+  "total_tokens": 240000,
+  "total_tasks": 16
+}

@@ -1,0 +1,61 @@
+<plan id="PLAN-1-5" phase="1" milestone="1">
+  <title>Electron Shell + Login Page + Auth Flow</title>
+  <requirements>REQ-003, REQ-004</requirements>
+  <tasks>
+    <task id="T-1-5-1">
+      <description>Create Electron project with Forge + Vite: forge.config.ts, vite.config.ts, package.json (pnpm, React 18, TypeScript 5.x, Electron latest stable), tsconfig.json. Main process: main.ts (BrowserWindow creation, IPC setup), ipc.ts (IPC handler registration). Renderer entry: index.html, main.tsx, App.tsx (React root with router). Platform abstraction layer: platform/types.ts (PlatformAPI interface), platform/electron.ts (real IPC), platform/web.ts (browser fallbacks). CSS design tokens: styles/tokens.css with all --sc-* custom properties from UI spec Section 1 (colours, spacing, typography, shadows). Base global styles: index.css.</description>
+      <files>client/forge.config.ts, client/vite.config.ts, client/package.json, client/tsconfig.json, client/src/main/main.ts, client/src/main/ipc.ts, client/src/renderer/index.html, client/src/renderer/main.tsx, client/src/renderer/App.tsx, client/src/platform/types.ts, client/src/platform/electron.ts, client/src/platform/web.ts, client/src/renderer/styles/tokens.css, client/src/renderer/index.css</files>
+      <verification>pnpm install succeeds. pnpm start launches Electron window. React app renders. CSS tokens loaded. Platform abstraction layer compiles.</verification>
+      <done-condition>Electron app launches with React renderer, CSS tokens applied, platform abstraction in place</done-condition>
+      <token-estimate>15000</token-estimate>
+      <complexity score="14" tier="STANDARD" confidence="75" model="sonnet">
+        <dimension name="scope" score="3" rationale="14 files across main/renderer/platform/styles" />
+        <dimension name="integration" score="2" rationale="Electron Forge, Vite, React, TypeScript" />
+        <dimension name="infrastructure" score="2" rationale="Build toolchain setup" />
+        <dimension name="knowledge" score="2" rationale="Electron Forge + Vite integration patterns" />
+        <dimension name="risk" score="1" rationale="Scaffolding, easily corrected" />
+        <dimension name="testing" score="1" rationale="Manual smoke test only" />
+        <dimension name="decomposability" score="1" rationale="Main/renderer/platform independent" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-5-2">
+      <description>Create API client layer and auth flow: api/client.ts (httpx-style client with base URL configuration, JWT Bearer header injection, automatic 401 → refresh retry), api/sse.ts (SSE client stub — full implementation Phase 2). Auth flow: safeStorage integration via Electron main process IPC for token persist/retrieve/clear. "Remember me" toggle: checked → persist refresh token in safeStorage, unchecked → clear on app close. Token refresh: on 401 response, call POST /api/v1/auth/refresh, retry original request. Expired refresh → redirect to login. Generate TypeScript types from OpenAPI spec (openapi-typescript): api/generated/ directory, pnpm codegen script in package.json.</description>
+      <files>client/src/renderer/api/client.ts, client/src/renderer/api/sse.ts, client/src/renderer/api/generated/.gitkeep, client/src/main/local-store.ts, client/src/renderer/hooks/useAuth.ts, client/src/renderer/contexts/AuthContext.tsx</files>
+      <verification>API client sends Bearer header. 401 triggers refresh. Expired refresh redirects to login. safeStorage persists tokens across app restart. openapi-typescript codegen runs.</verification>
+      <done-condition>Auth tokens stored in safeStorage, automatic refresh works, API client interceptor handles 401, codegen pipeline functional</done-condition>
+      <token-estimate>14000</token-estimate>
+      <complexity score="14" tier="STANDARD" confidence="78" model="sonnet">
+        <dimension name="scope" score="2" rationale="6 files across renderer + main process" />
+        <dimension name="integration" score="2" rationale="Electron safeStorage IPC, openapi-typescript" />
+        <dimension name="infrastructure" score="1" rationale="Code only" />
+        <dimension name="knowledge" score="2" rationale="Electron IPC patterns, token refresh interceptor" />
+        <dimension name="risk" score="2" rationale="Token handling is security-sensitive" />
+        <dimension name="testing" score="2" rationale="Auth flow edge cases" />
+        <dimension name="decomposability" score="1" rationale="Client and auth separable" />
+        <multipliers applied="security-sensitive" adjusted="1.2x" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-5-3">
+      <description>Create Login page: LoginView.tsx — two-column layout (dark branding left panel / white form right panel). Standard login form: username, password, "Remember me" checkbox, "Sign In" button. First-run variant: when GET /health returns setup_required=true, show "Create Admin Account" form instead (username, password, confirm password, "Create Account" button). POST /api/v1/auth/register on first run, POST /api/v1/auth/login on subsequent. PasswordChangeView.tsx — forced password change dialog shown when must_change_password=true in login response. Calls POST /api/v1/auth/change-password. Radix UI primitives for form inputs. CSS Modules with .sc- prefix. Structural fidelity to prototype (correct layout, --sc-* tokens applied, not pixel-perfect).</description>
+      <files>client/src/renderer/views/LoginView.tsx, client/src/renderer/views/LoginView.module.css, client/src/renderer/views/PasswordChangeView.tsx, client/src/renderer/views/PasswordChangeView.module.css</files>
+      <verification>Login page renders with two-column layout. First-run shows admin creation form. Login submits correctly. Password change dialog enforced when must_change_password=true. CSS tokens applied.</verification>
+      <done-condition>Full login flow: first-run admin creation → login → forced password change (when flagged) → redirect to app shell</done-condition>
+      <token-estimate>12000</token-estimate>
+      <complexity score="11" tier="SIMPLE" confidence="85" model="haiku">
+        <dimension name="scope" score="2" rationale="4 files (2 views + 2 CSS modules)" />
+        <dimension name="integration" score="1" rationale="Radix UI primitives only" />
+        <dimension name="infrastructure" score="1" rationale="Code only" />
+        <dimension name="knowledge" score="1" rationale="Standard form patterns" />
+        <dimension name="risk" score="2" rationale="User-facing, first impression" />
+        <dimension name="testing" score="1" rationale="Manual visual check" />
+        <dimension name="decomposability" score="1" rationale="Login and password change independent" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
+      </complexity>
+    </task>
+  </tasks>
+  <dependencies>PLAN-1-5 depends on PLAN-1-2 (needs auth API endpoints to connect to)</dependencies>
+</plan>

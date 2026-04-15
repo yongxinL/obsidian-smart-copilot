@@ -1,0 +1,79 @@
+<plan id="PLAN-1-3" phase="1" milestone="1">
+  <title>File Watcher + Indexing Pipeline (Metadata Only)</title>
+  <requirements>REQ-005, REQ-006</requirements>
+  <tasks>
+    <task id="T-1-3-1">
+      <description>Create VaultRegistry: in-memory path → (user_id, namespace) mapping. rebuild() reads all users from DB, creates mappings for /vaults/private/{username}/ and /vaults/shared/. resolve(filepath) returns (UUID, str) or None. SYSTEM_USER_ID constant (00000000-0000-0000-0000-000000000000) for shared namespace. Registry refresh on startup and user create/delete. PostgreSQL LISTEN/NOTIFY for multi-worker sync (vault_registry_refresh channel). Singleton pattern. On user creation, create directory at {vault.base_path}/private/{username}/ if not exists.</description>
+      <files>server/app/vault/__init__.py, server/app/vault/registry.py</files>
+      <verification>VaultRegistry resolves private and shared paths correctly. Unknown paths return None. Refresh rebuilds mapping after user creation.</verification>
+      <done-condition>VaultRegistry singleton resolves paths to (user_id, namespace) tuples, handles shared + private namespaces, refreshes on user changes</done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="13" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope" score="1" rationale="2 files" />
+        <dimension name="integration" score="2" rationale="PostgreSQL LISTEN/NOTIFY, filesystem" />
+        <dimension name="infrastructure" score="2" rationale="Filesystem directories, DB listener" />
+        <dimension name="knowledge" score="2" rationale="LISTEN/NOTIFY async pattern" />
+        <dimension name="risk" score="2" rationale="Wrong resolution = data isolation failure" />
+        <dimension name="testing" score="2" rationale="Path resolution edge cases" />
+        <dimension name="decomposability" score="1" rationale="Self-contained module" />
+        <multipliers applied="security-sensitive" adjusted="1.2x" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-3-2">
+      <description>Create markdown parser and NoteTypeClassifier: parser.py — extract YAML frontmatter via python-frontmatter, extract [[wikilinks]] including aliases [[target|display]] via regex, return ParsedDocument(frontmatter, wikilinks, body, title, tags, folder). NoteTypeClassifier — infer note_type from: (1) explicit type: frontmatter field, (2) folder path rules (/projects/, /journal/ → project; /inbox/, /fleeting/ → fleeting), (3) tag rules (#fleeting → fleeting, #project → project), (4) default → permanent. Configurable via settings.yaml zettelkasten.note_types.</description>
+      <files>server/app/vault/parser.py, server/app/rag/__init__.py, server/app/rag/note_type.py</files>
+      <verification>Parser extracts frontmatter, wikilinks (with aliases), body from sample markdown files. NoteTypeClassifier correctly infers types from frontmatter, folders, tags, and defaults.</verification>
+      <done-condition>Parser handles: standard notes, notes with YAML frontmatter, notes with [[wikilinks]], notes with [[target|alias]] links. Classifier covers all 8 note types.</done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="11" tier="SIMPLE" confidence="88" model="haiku">
+        <dimension name="scope" score="1" rationale="3 files" />
+        <dimension name="integration" score="2" rationale="python-frontmatter, markdown-it-py" />
+        <dimension name="infrastructure" score="1" rationale="Code only" />
+        <dimension name="knowledge" score="2" rationale="Wikilink regex edge cases, Zettelkasten type rules" />
+        <dimension name="risk" score="1" rationale="Read-only parsing" />
+        <dimension name="testing" score="2" rationale="Many edge cases in parsing" />
+        <dimension name="decomposability" score="1" rationale="Parser and classifier independent" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-3-3">
+      <description>Create file watcher and IndexQueue: watcher.py — watchdog Observer monitoring vault.base_path for .md file create/modify/delete/rename events. Debounce at vault.watch_debounce_ms (default 300ms). On event: VaultRegistry.resolve() → if resolved, enqueue; if None, log and skip. App-initiated writes set a skip flag (content_hash dedup). indexer.py — IndexQueue processes events asynchronously: parse markdown → create/update documents table record (path, content_hash via xxhash XXH64, note_type, frontmatter JSONB, title, folder, tags, word_count) → create/update wikilinks table records (source_doc, target_doc resolved by path, target_name). No embedding, no enrichment, no chunks in Phase 1. Delete events remove document + cascade to wikilinks. Rename events update path.</description>
+      <files>server/app/vault/watcher.py, server/app/vault/indexer.py</files>
+      <verification>Save .md file in vault → document record appears in DB within 5 seconds. Delete file → document removed. Rename → path updated. Wikilinks extracted and stored. content_hash dedup prevents double processing.</verification>
+      <done-condition>Watcher detects all file events, IndexQueue processes them async, documents + wikilinks tables populated correctly, debounce works, app-initiated writes bypass watcher</done-condition>
+      <token-estimate>15000</token-estimate>
+      <complexity score="15" tier="STANDARD" confidence="78" model="sonnet">
+        <dimension name="scope" score="2" rationale="2 files with async coordination" />
+        <dimension name="integration" score="2" rationale="watchdog, xxhash, filesystem events" />
+        <dimension name="infrastructure" score="2" rationale="File system monitoring, async queue" />
+        <dimension name="knowledge" score="2" rationale="watchdog debounce, async queue patterns" />
+        <dimension name="risk" score="2" rationale="Missed events = stale index" />
+        <dimension name="testing" score="3" rationale="Filesystem event timing, debounce, race conditions" />
+        <dimension name="decomposability" score="2" rationale="Watcher and indexer coupled by queue interface" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="none" />
+      </complexity>
+    </task>
+    <task id="T-1-3-4">
+      <description>Create bulk initial indexing and progress endpoint: On startup (or user creation), detect unindexed vault (documents not in DB). Queue all .md files for processing. Track progress (current/total/eta). GET /api/v1/vault/index/progress (JWT auth) returns {active: bool, current: int, total: int, eta_seconds: int|null}. Returns {active: false} when idle. Create reconciler skeleton: reconciler.py with stub reconcile() method (full implementation Phase 2+). Wire watcher startup into FastAPI lifespan. Wire VaultRegistry rebuild into lifespan.</description>
+      <files>server/app/vault/reconciler.py, server/app/api/vault.py, server/app/schemas/vault.py</files>
+      <verification>New vault with 100 .md files → all indexed on startup with progress tracking. GET /api/v1/vault/index/progress shows correct counts during bulk indexing. Returns {active: false} when complete.</verification>
+      <done-condition>Bulk indexing processes all existing .md files on startup, progress endpoint reports accurate counts, target 1000 notes in under 5 minutes (metadata-only)</done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="13" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope" score="2" rationale="3 files, startup lifecycle wiring" />
+        <dimension name="integration" score="1" rationale="Internal only" />
+        <dimension name="infrastructure" score="2" rationale="Startup lifecycle, async batch processing" />
+        <dimension name="knowledge" score="2" rationale="FastAPI lifespan, batch progress tracking" />
+        <dimension name="risk" score="1" rationale="Read-only initial scan" />
+        <dimension name="testing" score="2" rationale="Bulk processing timing" />
+        <dimension name="decomposability" score="1" rationale="Progress endpoint independent of indexer" />
+        <multipliers applied="none" adjusted="1.0x" />
+        <integration-hints worktree="false" context-budget="10240" github-artifact="none" />
+      </complexity>
+    </task>
+  </tasks>
+  <dependencies>PLAN-1-3 depends on PLAN-1-1 (needs app skeleton, models, config, dependencies.py)</dependencies>
+</plan>
