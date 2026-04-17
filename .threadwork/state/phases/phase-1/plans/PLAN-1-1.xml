@@ -1,97 +1,225 @@
 <plan id="PLAN-1-1" phase="1" milestone="1">
-  <title>Backend Foundation — Project Scaffolding, Docker, Database Schema</title>
-  <requirements>REQ-001, REQ-002</requirements>
+  <title>Project Scaffold — Monorepo, pyproject.toml, pnpm Workspace, Config Files</title>
+  <requirements>REQ-001, REQ-002, REQ-003</requirements>
+  <!-- Foundation scaffolding that every other plan depends on. Creates the directory tree,
+       build configs, environment templates, and shared constants. No business logic. -->
   <tasks>
     <task id="T-1-1-1">
-      <description>Create Python project structure: pyproject.toml (pytest asyncio_mode=auto, package metadata), requirements.txt (pinned to minor versions: fastapi, uvicorn, sqlalchemy, asyncpg, psycopg2-binary, alembic, python-jose, argon2-cffi, cryptography, pydantic, pydantic-settings[yaml], pyyaml, watchdog, markdown-it-py, python-frontmatter, xxhash, nh3, httpx), Makefile (test, build, docker-build targets), settings.yaml with full server configuration reference from PRD Section 22.</description>
-      <files>server/pyproject.toml, server/requirements.txt, server/Makefile, server/config/settings.yaml</files>
-      <verification>pip install -r requirements.txt succeeds. make targets defined. settings.yaml matches PRD Section 22 structure.</verification>
-      <done-condition>All dependencies installable, settings.yaml loadable by pydantic-settings</done-condition>
-      <token-estimate>10000</token-estimate>
-      <complexity score="11" tier="SIMPLE" confidence="90" model="haiku">
-        <dimension name="scope" score="1" rationale="4 config/manifest files" />
-        <dimension name="integration" score="2" rationale="Many pinned dependencies to resolve" />
-        <dimension name="infrastructure" score="2" rationale="New project from scratch" />
-        <dimension name="knowledge" score="1" rationale="Standard Python project setup" />
-        <dimension name="risk" score="2" rationale="Pin versions wrong = cascading failures" />
-        <dimension name="testing" score="1" rationale="No tests for scaffolding" />
-        <dimension name="decomposability" score="1" rationale="Straightforward sequential" />
-        <multipliers applied="none" adjusted="1.0x" />
-        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
-      </complexity>
-    </task>
-    <task id="T-1-1-2">
-      <description>Create FastAPI application skeleton: main.py (app factory, CORS, router includes, logging.config.dictConfig with JSON formatter for prod / plain for dev, startup/shutdown lifespan), config.py (pydantic-settings with custom YamlSettingsSource, env var overrides, typed Settings class matching settings.yaml), dependencies.py (get_db_session with SET/RESET app.current_user_id in finally block, get_db dependency, get_current_user, require_admin), encryption.py (Fernet encrypt/decrypt from ENCRYPTION_KEY env var).</description>
-      <files>server/app/__init__.py, server/app/main.py, server/app/config.py, server/app/dependencies.py, server/app/encryption.py</files>
-      <verification>FastAPI app starts, GET /health returns 200, config loads from settings.yaml + env overrides, logging outputs JSON in production mode.</verification>
-      <done-condition>uvicorn app.main:app starts without error, settings singleton accessible, get_db_session SET/RESET cycle works</done-condition>
-      <token-estimate>15000</token-estimate>
-      <complexity score="15" tier="STANDARD" confidence="85" model="sonnet">
-        <dimension name="scope" score="2" rationale="5 interconnected core files" />
-        <dimension name="integration" score="2" rationale="pydantic-settings YAML source, asyncpg, Fernet" />
-        <dimension name="infrastructure" score="1" rationale="Code only" />
-        <dimension name="knowledge" score="2" rationale="pydantic-settings YAML custom source requires research" />
-        <dimension name="risk" score="3" rationale="RLS session management is security-critical" />
-        <dimension name="testing" score="1" rationale="Tested via integration tests in PLAN-1-6" />
-        <dimension name="decomposability" score="1" rationale="Each file independent" />
-        <multipliers applied="security-sensitive" adjusted="1.2x" />
-        <integration-hints worktree="false" context-budget="12288" github-artifact="none" />
-      </complexity>
-    </task>
-    <task id="T-1-1-3">
-      <description>Create Docker infrastructure: Dockerfile (FROM pgvector/pgvector:pg16, Python 3.12, supervisord, app copy, requirements install, HEALTHCHECK), supervisord.conf (nodaemon=true, postgresql program priority=10, fastapi program priority=20), wait-for-pg.sh (pg_isready polling, alembic upgrade head, exec uvicorn --workers 2).</description>
-      <files>server/Dockerfile, server/supervisord.conf, server/scripts/wait-for-pg.sh</files>
-      <verification>docker build succeeds. docker run starts both PostgreSQL and FastAPI. GET /health returns 200 within 30 seconds. Container survives PostgreSQL restart.</verification>
-      <done-condition>docker run -d -p 8000:8000 -e ENCRYPTION_KEY=test smart-copilot:latest → GET /health 200 within 30s</done-condition>
+      <description>
+        Create the monorepo directory structure and root configuration files.
+
+        Files to create:
+        - pnpm-workspace.yaml with packages: ["server", "client"]
+        - Root package.json with "codegen" script (`openapi-typescript http://localhost:8000/openapi.json -o client/src/renderer/api/generated/api.ts`), engines.node >= 20, devDependencies: openapi-typescript
+        - .nvmrc containing "20"
+        - .gitignore (Python + Node + Electron: __pycache__, node_modules, dist, .env, *.pyc, .venv, .egg-info, vaults/)
+        - .env.example with ENCRYPTION_KEY, SECRET_KEY, DATABASE_URL generation instructions
+        - README.md with project overview, prerequisites (Python 3.12, Node 20, pnpm, Docker), setup instructions, key generation commands
+
+        Directory skeleton (empty __init__.py where needed):
+        - server/app/__init__.py
+        - server/app/api/__init__.py
+        - server/app/services/__init__.py
+        - server/app/models/__init__.py
+        - server/app/schemas/__init__.py
+        - server/app/auth/__init__.py
+        - server/app/vault/__init__.py
+        - server/app/rag/__init__.py
+        - server/alembic/versions/ (empty)
+        - server/config/
+        - server/scripts/
+        - server/tests/integration/
+        - client/src/main/
+        - client/src/renderer/api/
+        - client/src/renderer/api/generated/
+        - client/src/renderer/views/
+        - client/src/renderer/components/
+        - client/src/renderer/styles/
+        - client/src/platform/
+        - client/src/shared/
+      </description>
+      <files>
+        pnpm-workspace.yaml,
+        package.json,
+        .nvmrc,
+        .gitignore,
+        .env.example,
+        README.md,
+        server/app/__init__.py,
+        server/app/api/__init__.py,
+        server/app/services/__init__.py,
+        server/app/models/__init__.py,
+        server/app/schemas/__init__.py,
+        server/app/auth/__init__.py,
+        server/app/vault/__init__.py,
+        server/app/rag/__init__.py,
+        server/tests/__init__.py,
+        server/tests/integration/__init__.py
+      </files>
+      <verification>
+        All directories exist with __init__.py files.
+        pnpm-workspace.yaml lists server and client.
+        .nvmrc contains "20".
+        .env.example contains ENCRYPTION_KEY and SECRET_KEY with generation commands.
+      </verification>
+      <done-condition>
+        `ls server/app/api/__init__.py` succeeds. `cat .nvmrc` outputs "20". `cat pnpm-workspace.yaml` lists both workspace members. `.env.example` contains both key generation commands verbatim from spec.
+      </done-condition>
       <token-estimate>8000</token-estimate>
-      <complexity score="13" tier="STANDARD" confidence="80" model="sonnet">
-        <dimension name="scope" score="1" rationale="3 infrastructure files" />
-        <dimension name="integration" score="2" rationale="PostgreSQL, pgvector, supervisord" />
-        <dimension name="infrastructure" score="3" rationale="Docker container with process management" />
-        <dimension name="knowledge" score="2" rationale="supervisord + pg_isready patterns" />
-        <dimension name="risk" score="2" rationale="Container stability affects all subsequent work" />
-        <dimension name="testing" score="1" rationale="Smoke test only" />
-        <dimension name="decomposability" score="1" rationale="3 files, clear boundaries" />
-        <multipliers applied="none" adjusted="1.0x" />
-        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
+      <complexity score="8" tier="SIMPLE" confidence="95" model="haiku">
+        <dimension name="scope"           score="2" rationale="15+ files but all boilerplate" />
+        <dimension name="integration"     score="1" rationale="No external deps, just file creation" />
+        <dimension name="infrastructure"  score="1" rationale="No infra changes, just scaffolding" />
+        <dimension name="knowledge"       score="1" rationale="Standard monorepo patterns" />
+        <dimension name="risk"            score="1" rationale="No user-facing or security impact" />
+        <dimension name="testing"         score="1" rationale="Visual inspection only" />
+        <dimension name="decomposability" score="1" rationale="Trivially splittable" />
+        <integration-hints worktree="false" context-budget="4096" github-artifact="task" />
       </complexity>
     </task>
-    <task id="T-1-1-4">
-      <description>Create all 17 SQLAlchemy 2.0 async ORM models matching PRD Section 5 exactly: User, ApiKey, Document, Chunk, Wikilink, Conversation, Message, Memory, DreamAuditLog, Project, OperationLog, LlmUsage, IndexEvent, SystemHealth, SystemConfig, UserSettings, Session. All models declare __tablename__ explicitly. UUID primary keys via gen_random_uuid(). Nullable embedding columns (vector type). Generated tsvector column on chunks. All indexes (HNSW, GIN, composite). Create single Alembic initial migration covering all 17 tables, all indexes, and all 14 RLS policies. Alembic env.py uses synchronous psycopg2 URL (rewritten from asyncpg DATABASE_URL). system_config seeded with embedding model defaults.</description>
-      <files>server/app/models/__init__.py, server/app/models/user.py, server/app/models/api_key.py, server/app/models/session.py, server/app/models/document.py, server/app/models/chunk.py, server/app/models/wikilink.py, server/app/models/conversation.py, server/app/models/message.py, server/app/models/memory.py, server/app/models/dream_audit_log.py, server/app/models/project.py, server/app/models/operation_log.py, server/app/models/llm_usage.py, server/app/models/index_event.py, server/app/models/system_health.py, server/app/models/system_config.py, server/app/models/user_settings.py, server/alembic.ini, server/alembic/env.py, server/alembic/versions/001_create_initial_schema.py</files>
-      <verification>alembic upgrade head succeeds against clean PostgreSQL. All 17 tables created. All 14 RLS policies active. HNSW and GIN indexes present. system_config seeded. alembic downgrade base reverses cleanly.</verification>
-      <done-condition>Full schema deployed via single migration, RLS policies verified via \dp+ in psql, system_config contains embedding defaults</done-condition>
-      <token-estimate>28000</token-estimate>
-      <complexity score="19" tier="COMPLEX" confidence="85" model="opus">
-        <dimension name="scope" score="3" rationale="21 files: 18 model files + alembic.ini + env.py + migration" />
-        <dimension name="integration" score="2" rationale="SQLAlchemy async + Alembic sync driver mismatch" />
-        <dimension name="infrastructure" score="3" rationale="Full database schema creation" />
-        <dimension name="knowledge" score="3" rationale="RLS policies, pgvector types, generated tsvector, advisory locks" />
-        <dimension name="risk" score="3" rationale="Schema errors cascade to all features" />
-        <dimension name="testing" score="2" rationale="Migration up/down test needed" />
-        <dimension name="decomposability" score="3" rationale="Single migration = monolithic, FK dependencies between models" />
-        <multipliers applied="security-sensitive" adjusted="1.2x" />
-        <integration-hints worktree="false" context-budget="24576" github-artifact="none" />
-      </complexity>
-    </task>
-    <task id="T-1-1-5">
-      <description>Create health endpoint: GET /health (no auth) returning {status, setup_required, version, database, indexing}. setup_required = true when no users in database. Database connectivity check. Indexing stub (always {active: false}). Wire into main.py router.</description>
-      <files>server/app/api/health.py, server/app/schemas/health.py</files>
-      <verification>GET /health returns 200 with correct schema. setup_required true on empty DB, false after user creation.</verification>
-      <done-condition>Health endpoint works without auth, returns correct setup_required flag</done-condition>
-      <token-estimate>4000</token-estimate>
+
+    <task id="T-1-1-2">
+      <description>
+        Create server/pyproject.toml with hatchling backend and all Phase 1 Python dependencies.
+
+        Build system: hatchling.
+        Project metadata: name="smart-copilot", version="1.0.0", requires-python=">=3.12".
+
+        Dependencies (Phase 1):
+        - fastapi[standard], uvicorn[standard], python-multipart
+        - sqlalchemy[asyncio]>=2.0, asyncpg, alembic, psycopg2-binary (alembic only)
+        - pgvector (SQLAlchemy pgvector type)
+        - pydantic>=2.0, pydantic-settings, pyyaml
+        - python-jose[cryptography] (JWT — backend uses python-jose, not jose which is JS)
+        - passlib[bcrypt] (password hashing)
+        - cryptography (Fernet encryption)
+        - watchdog (file watcher)
+        - python-frontmatter (markdown frontmatter)
+        - apscheduler>=3.10 (initialized but not scheduled in Phase 1)
+        - httpx (async HTTP client for tests)
+
+        Dev dependencies (optional group):
+        - pytest, pytest-asyncio, pytest-cov
+        - ruff
+        - httpx (test client)
+
+        Tool configs:
+        - [tool.pytest.ini_options]: asyncio_mode="auto", testpaths=["tests"]
+        - [tool.ruff]: line-length=100, target-version="py312"
+        - [tool.ruff.lint]: select=["E","W","F","I","N","UP","B","SIM"], ignore=["E501"]
+        - [tool.ruff.format]: quote-style="double", indent-style="space"
+      </description>
+      <files>server/pyproject.toml</files>
+      <verification>
+        `cd server &amp;&amp; pip install -e ".[dev]"` succeeds (or `pip install -e .` in a venv).
+        `ruff check server/app/` runs without config errors.
+        All required packages are listed.
+      </verification>
+      <done-condition>
+        pyproject.toml is valid TOML. Contains all listed dependencies. ruff config section matches spec (line-length=100, py312).
+      </done-condition>
+      <token-estimate>5000</token-estimate>
       <complexity score="7" tier="SIMPLE" confidence="95" model="haiku">
-        <dimension name="scope" score="1" rationale="2 files" />
-        <dimension name="integration" score="1" rationale="Direct DB query only" />
-        <dimension name="infrastructure" score="1" rationale="Code only" />
-        <dimension name="knowledge" score="1" rationale="Simple endpoint" />
-        <dimension name="risk" score="1" rationale="Read-only, no auth" />
-        <dimension name="testing" score="1" rationale="Minimal" />
+        <dimension name="scope"           score="1" rationale="Single file" />
+        <dimension name="integration"     score="1" rationale="Listing deps, not integrating" />
+        <dimension name="infrastructure"  score="1" rationale="Config file only" />
+        <dimension name="knowledge"       score="1" rationale="Standard pyproject.toml" />
+        <dimension name="risk"            score="1" rationale="Wrong dep version caught at install" />
+        <dimension name="testing"         score="1" rationale="pip install validates" />
+        <dimension name="decomposability" score="1" rationale="Atomic single file" />
+        <integration-hints worktree="false" context-budget="4096" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-1-3">
+      <description>
+        Create server/app/config.py — Pydantic Settings model loaded from settings.yaml.
+
+        Implementation:
+        - CONFIG_PATH = Path("/config/settings.yaml") — fail fast with RuntimeError if missing.
+        - Load YAML with yaml.safe_load, validate into a Pydantic BaseSettings model.
+        - Nested models for each section: ServerConfig, VaultConfig, AuthConfig, etc.
+        - Environment variable overrides via .env: DATABASE_URL, ENCRYPTION_KEY, SECRET_KEY.
+        - SYSTEM_USER_ID = UUID("00000000-0000-0000-0000-000000000000") as a module-level constant.
+        - Export a singleton `settings` instance loaded at import time.
+        - Create server/config/settings.yaml.example — verbatim copy of PRD section 22 YAML.
+
+        Must NOT fall back to defaults when settings.yaml is missing — raise RuntimeError with clear message.
+      </description>
+      <files>server/app/config.py, server/config/settings.yaml.example</files>
+      <verification>
+        `python -c "from app.config import settings"` fails with RuntimeError when settings.yaml missing.
+        settings.yaml.example matches PRD section 22 verbatim.
+        SYSTEM_USER_ID is UUID("00000000-0000-0000-0000-000000000000").
+      </verification>
+      <done-condition>
+        config.py raises RuntimeError when /config/settings.yaml is absent. When present, it parses all sections into typed Pydantic models. settings.yaml.example contains the full PRD section 22 config.
+      </done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="10" tier="SIMPLE" confidence="90" model="haiku">
+        <dimension name="scope"           score="1" rationale="2 files" />
+        <dimension name="integration"     score="2" rationale="YAML + Pydantic + env vars" />
+        <dimension name="infrastructure"  score="1" rationale="Config loading, no infra" />
+        <dimension name="knowledge"       score="2" rationale="Pydantic Settings v2 patterns" />
+        <dimension name="risk"            score="2" rationale="Bad config = app won't start" />
+        <dimension name="testing"         score="1" rationale="Import test sufficient" />
         <dimension name="decomposability" score="1" rationale="Self-contained" />
-        <multipliers applied="none" adjusted="1.0x" />
-        <integration-hints worktree="false" context-budget="4096" github-artifact="none" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-1-4">
+      <description>
+        Create server/app/encryption.py — Fernet encrypt/decrypt utility for API key storage.
+
+        Implementation:
+        - Load ENCRYPTION_KEY from environment (via config module).
+        - encrypt_value(plaintext: str) -> str: returns base64-encoded Fernet ciphertext.
+        - decrypt_value(ciphertext: str) -> str: returns original plaintext.
+        - Fail fast if ENCRYPTION_KEY is missing or invalid Fernet key.
+
+        Create server/app/dependencies.py — FastAPI dependency functions.
+        - get_db: yields an AsyncSession (no RLS context, for unauthenticated routes).
+        - get_db_session(user_id: UUID): async context manager that SETs app.current_user_id,
+          yields session, commits on success, rollbacks on exception, RESETs in finally block.
+        - async_session_factory from create_async_engine with postgresql+asyncpg URL.
+
+        The finally block MUST contain: await session.execute(text("RESET app.current_user_id"))
+      </description>
+      <files>server/app/encryption.py, server/app/dependencies.py</files>
+      <verification>
+        encryption.py: encrypt then decrypt round-trips correctly.
+        dependencies.py: get_db_session context manager has RESET in finally block.
+        No import psycopg2 in these files.
+      </verification>
+      <done-condition>
+        `grep "RESET app.current_user_id" server/app/dependencies.py` finds the RESET in a finally block. encryption.py exports encrypt_value and decrypt_value functions. Neither file imports psycopg2.
+      </done-condition>
+      <token-estimate>8000</token-estimate>
+      <complexity score="11" tier="SIMPLE" confidence="90" model="sonnet">
+        <dimension name="scope"           score="1" rationale="2 files" />
+        <dimension name="integration"     score="2" rationale="SQLAlchemy async + Fernet" />
+        <dimension name="infrastructure"  score="1" rationale="No new infra" />
+        <dimension name="knowledge"       score="2" rationale="RLS SET/RESET pattern, Fernet" />
+        <dimension name="risk"            score="3" rationale="RLS context leak = security bug" />
+        <dimension name="testing"         score="1" rationale="grep + round-trip test" />
+        <dimension name="decomposability" score="1" rationale="Two independent utilities" />
+        <multiplier type="security-sensitive" factor="1.2" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
       </complexity>
     </task>
   </tasks>
-  <dependencies>None — this is the foundation plan</dependencies>
+  <dependencies>None (foundation plan — all other plans depend on this)</dependencies>
+  <decisions>
+    <decision task="T-1-1-3" timestamp="2026-04-13T07:45:00.000Z">
+      <choice>Added SETTINGS_YAML_PATH env var override to CONFIG_PATH in config.py</choice>
+      <rationale>The hard-coded /config/settings.yaml path is correct for production Docker deployments, but makes local development and testing impossible without root-level file creation. An env var override allows tests to point at server/config/settings.yaml.example without altering the fail-fast production behavior.</rationale>
+      <alternatives-considered>Hard-coded path only (rejected: forces developers to create /config/ directory with sudo); silently falling back to a default (rejected: explicitly forbidden by spec)</alternatives-considered>
+    </decision>
+    <decision task="T-1-1-4" timestamp="2026-04-13T07:50:00.000Z">
+      <choice>Used SET LOCAL instead of SET for app.current_user_id in get_db_session</choice>
+      <rationale>SET LOCAL confines the GUC change to the current transaction only, while SET persists for the entire session. Using SET LOCAL provides defense-in-depth: even if the RESET in the finally block were somehow skipped (e.g., a hard process kill), the GUC reverts at transaction end rather than persisting to the next request on that connection.</rationale>
+      <alternatives-considered>SET (rejected: persists beyond transaction boundary, weaker safety guarantee); SET LOCAL (chosen: transaction-scoped, defense-in-depth with finally RESET)</alternatives-considered>
+    </decision>
+  </decisions>
 </plan>

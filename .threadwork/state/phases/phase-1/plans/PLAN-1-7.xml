@@ -1,0 +1,200 @@
+<plan id="PLAN-1-7" phase="1" milestone="1">
+  <title>Integration Tests — RLS Isolation, Auth Flow, VaultRegistry</title>
+  <requirements>REQ-002, REQ-003, REQ-004, REQ-005</requirements>
+  <!-- Verification checkpoint 2: pytest integration suite covering the three highest-risk areas.
+       RLS isolation test catches context leaks. Auth flow tests the full register-login-refresh-change
+       pipeline. VaultRegistry tests path resolution correctness. -->
+  <tasks>
+    <task id="T-1-7-1">
+      <description>
+        Create server/tests/conftest.py — shared test fixtures for integration tests.
+
+        Fixtures:
+        - async_engine: creates a test database engine (uses TEST_DATABASE_URL env var or derives from DATABASE_URL).
+        - db_session: yields an AsyncSession with automatic rollback after each test.
+        - test_client: httpx.AsyncClient wrapping the FastAPI app for endpoint testing.
+        - create_test_user(username, role="user"): helper that creates a user and returns (user, access_token).
+        - auth_headers(token): returns {"Authorization": f"Bearer {token}"} dict.
+        - clean_db: ensures tables are clean between tests (TRUNCATE with CASCADE).
+
+        Configure pytest-asyncio with auto mode.
+        All fixtures use the real database (integration tests, not mocks).
+      </description>
+      <files>server/tests/conftest.py</files>
+      <verification>
+        conftest.py provides async fixtures for db_session, test_client, create_test_user.
+        Fixtures use real PostgreSQL (not sqlite).
+        Tests can import and use these fixtures.
+      </verification>
+      <done-condition>
+        Test fixtures create real async database sessions, provide httpx test client, and include user creation helpers with JWT tokens. Tests run against a real PostgreSQL instance.
+      </done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="12" tier="STANDARD" confidence="85" model="sonnet">
+        <dimension name="scope"           score="1" rationale="Single file" />
+        <dimension name="integration"     score="3" rationale="AsyncSession + httpx + FastAPI + real DB" />
+        <dimension name="infrastructure"  score="2" rationale="Test DB setup/teardown" />
+        <dimension name="knowledge"       score="2" rationale="pytest-asyncio fixtures, test DB patterns" />
+        <dimension name="risk"            score="1" rationale="Test infrastructure, not production" />
+        <dimension name="testing"         score="2" rationale="Meta-testing: fixtures must work" />
+        <dimension name="decomposability" score="1" rationale="Single conftest file" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-7-2">
+      <description>
+        Create server/tests/integration/test_rls.py — RLS context isolation test.
+
+        This is the MOST IMPORTANT test in Phase 1 (per CONTEXT.md known risk #1).
+
+        Test cases:
+        1. test_rls_isolation_after_exception:
+           - Create user_a and user_b with documents in separate namespaces.
+           - Open a session as user_a, SET app.current_user_id = user_a.id.
+           - Force an exception mid-query (e.g., intentional constraint violation).
+           - Verify the session's app.current_user_id is RESET in the finally block (not leaked).
+           - Open a new session from the pool — verify it does NOT carry user_a's context.
+           - Query documents as user_b — verify user_b only sees their own documents.
+
+        2. test_content_table_shared_access:
+           - Create a document with namespace="shared" owned by SYSTEM_USER_ID.
+           - Query as user_a — should see the shared document.
+           - Query as user_b — should also see the shared document.
+
+        3. test_private_table_isolation:
+           - Create conversations for user_a and user_b.
+           - Query as user_a — should only see user_a's conversations.
+           - Query as user_b — should only see user_b's conversations.
+
+        4. test_api_keys_shared_access:
+           - Create a shared API key (user_id=NULL).
+           - Create a personal API key (user_id=user_a).
+           - Query as user_a — sees both shared and personal.
+           - Query as user_b — sees only shared.
+      </description>
+      <files>server/tests/integration/test_rls.py</files>
+      <verification>
+        `pytest server/tests/integration/test_rls.py -v` exits 0 with exactly 4 tests passed (test_rls_isolation_after_exception, test_content_table_shared_access, test_private_table_isolation, test_api_keys_shared_access).
+        test_rls_isolation_after_exception explicitly verifies the RESET happens after exception by querying the session's current_setting after the exception path.
+        Tests use real PostgreSQL with RLS policies enabled.
+        No mocking of RLS — tests run against actual policies.
+      </verification>
+      <done-condition>
+        RLS isolation test proves: (1) connection pool does not leak user context after exceptions, (2) shared namespace documents are visible to all users, (3) private table rows are invisible cross-user, (4) api_keys NULL user_id rows are shared. All tests pass against real PostgreSQL with RLS enabled.
+      </done-condition>
+      <token-estimate>15000</token-estimate>
+      <complexity score="16" tier="STANDARD" confidence="75" model="sonnet">
+        <dimension name="scope"           score="2" rationale="Single file, 4 complex test cases" />
+        <dimension name="integration"     score="3" rationale="Real DB + RLS + connection pool + multiple users" />
+        <dimension name="infrastructure"  score="2" rationale="Needs running PostgreSQL with RLS" />
+        <dimension name="knowledge"       score="3" rationale="RLS testing patterns, connection pool behavior" />
+        <dimension name="risk"            score="3" rationale="Validates the security model" />
+        <dimension name="testing"         score="1" rationale="It IS the test" />
+        <dimension name="decomposability" score="2" rationale="Tests share fixture setup" />
+        <multiplier type="security-sensitive" factor="1.2" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-7-3">
+      <description>
+        Create server/tests/integration/test_auth.py — Full auth flow integration tests.
+
+        Test cases:
+        1. test_register_first_user_is_admin:
+           POST /api/v1/auth/register with first user → 200, role="admin" in response.
+        2. test_register_blocked_when_registration_disabled:
+           After first user exists and allow_registration=false → POST /register returns 403.
+        3. test_login_valid_credentials:
+           POST /api/v1/auth/login → 200 with access_token, refresh_token, user.
+        4. test_login_invalid_password:
+           POST /api/v1/auth/login with wrong password → 401.
+        5. test_refresh_token_rotation:
+           POST /api/v1/auth/refresh with valid refresh_token → new token pair. Old refresh token invalidated.
+        6. test_access_protected_route_with_valid_token:
+           GET /api/v1/auth/me with valid Bearer token → 200 with user profile.
+        7. test_access_protected_route_without_token:
+           GET /api/v1/auth/me without Authorization header → 401.
+        8. test_change_password_clears_must_change:
+           Create user with must_change_password=True. POST /change-password → must_change_password becomes False.
+        9. test_session_revocation:
+           Create session. DELETE /sessions/{id} → session revoked. Subsequent token use → 401.
+        10. test_admin_create_user_with_temp_password:
+           POST /api/v1/admin/users → 201 with temp_password. Login with temp_password → must_change_password=true.
+      </description>
+      <files>server/tests/integration/test_auth.py</files>
+      <verification>
+        All 10 test cases pass.
+        Tests use httpx test client against real FastAPI app + real DB.
+        First-user-is-admin logic verified.
+        Token rotation verified (old token invalid after refresh).
+        Session revocation verified (token rejected after revoke).
+      </verification>
+      <done-condition>
+        Full auth flow tested end-to-end: register (first user admin), login, refresh (rotation), change-password (clears flag), protected routes (401 without token), session management (revoke blocks access), admin user creation (temp password + must_change). All 10 tests pass.
+      </done-condition>
+      <token-estimate>18000</token-estimate>
+      <complexity score="14" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope"           score="2" rationale="Single file, 10 test cases" />
+        <dimension name="integration"     score="3" rationale="Full HTTP stack + DB + JWT + sessions" />
+        <dimension name="infrastructure"  score="1" rationale="Uses existing test fixtures" />
+        <dimension name="knowledge"       score="2" rationale="Auth flow edge cases" />
+        <dimension name="risk"            score="2" rationale="Validates auth correctness" />
+        <dimension name="testing"         score="1" rationale="It IS the test" />
+        <dimension name="decomposability" score="3" rationale="Tests depend on each other's state (first user must be created first)" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-7-4">
+      <description>
+        Create server/tests/integration/test_vault.py — VaultRegistry and parser unit/integration tests.
+
+        Test cases:
+        1. test_vault_registry_resolve_private_path:
+           Create user "alice". registry.resolve("/vaults/private/alice/notes/test.md") → (alice.id, "private").
+        2. test_vault_registry_resolve_shared_path:
+           registry.resolve("/vaults/shared/docs/readme.md") → (SYSTEM_USER_ID, "shared").
+        3. test_vault_registry_resolve_unknown_path:
+           registry.resolve("/tmp/random.md") → None.
+        4. test_vault_registry_rebuild_on_user_create:
+           Create new user "bob". Rebuild registry. resolve("/vaults/private/bob/note.md") → (bob.id, "private").
+        5. test_markdown_parser_frontmatter:
+           Parse a .md file with YAML frontmatter → frontmatter dict contains expected keys.
+        6. test_markdown_parser_wikilinks:
+           Parse content with [[Target]] and [[Target|Alias]] → returns correct WikilinkRef list.
+        7. test_wikilinks_in_code_blocks_skipped:
+           Content with [[NotALink]] inside a fenced code block → not extracted.
+        8. test_note_type_classifier_explicit:
+           Frontmatter with type="literature" → returns "literature".
+        9. test_note_type_classifier_folder:
+           File in /inbox/ folder → returns "fleeting".
+        10. test_note_type_classifier_default:
+           No hints → returns "permanent".
+      </description>
+      <files>server/tests/integration/test_vault.py</files>
+      <verification>
+        All 10 test cases pass.
+        VaultRegistry tests use real DB for rebuild.
+        Parser tests use in-memory strings (no DB needed).
+        NoteTypeClassifier tests verify priority: explicit > folder > tag > default.
+      </verification>
+      <done-condition>
+        VaultRegistry resolves private, shared, and unknown paths correctly. Rebuild picks up new users. Markdown parser extracts frontmatter and wikilinks (including aliases). Code block wikilinks are skipped. NoteTypeClassifier follows priority chain. All 10 tests pass.
+      </done-condition>
+      <token-estimate>12000</token-estimate>
+      <complexity score="11" tier="SIMPLE" confidence="85" model="sonnet">
+        <dimension name="scope"           score="2" rationale="Single file, 10 test cases" />
+        <dimension name="integration"     score="2" rationale="Real DB for registry, in-memory for parser" />
+        <dimension name="infrastructure"  score="1" rationale="Uses existing fixtures" />
+        <dimension name="knowledge"       score="1" rationale="Straightforward assertion patterns" />
+        <dimension name="risk"            score="1" rationale="Validates vault correctness" />
+        <dimension name="testing"         score="1" rationale="It IS the test" />
+        <dimension name="decomposability" score="3" rationale="3 test groups could be separate files but cohesive here" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+  </tasks>
+  <dependencies>PLAN-1-7 depends on PLAN-1-4 (auth endpoints), PLAN-1-5 (admin endpoints), PLAN-1-6 (VaultRegistry + parser)</dependencies>
+</plan>

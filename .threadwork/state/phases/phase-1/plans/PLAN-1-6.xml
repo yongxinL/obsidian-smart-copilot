@@ -1,61 +1,262 @@
 <plan id="PLAN-1-6" phase="1" milestone="1">
-  <title>Integration Tests + Verification Suite</title>
-  <requirements>REQ-001, REQ-002, REQ-003, REQ-004, REQ-005</requirements>
+  <title>VaultRegistry + File Watcher + IndexQueue + Markdown Parser + NoteTypeClassifier</title>
+  <requirements>REQ-005, REQ-006</requirements>
+  <!-- Vault filesystem layer: registry resolves paths to (user_id, namespace), watchdog detects
+       .md changes with 300ms debounce, IndexQueue enqueues for Phase 2 processing, markdown parser
+       extracts frontmatter + wikilinks, NoteTypeClassifier infers note type. -->
   <tasks>
     <task id="T-1-6-1">
-      <description>Create test infrastructure: conftest.py with fixtures for real PostgreSQL test database (create/drop per session), async database session fixture, httpx AsyncClient fixture pointing at FastAPI test app, test user factory (admin + regular user), test vault directory setup/teardown. pyproject.toml [tool.pytest.ini_options] with asyncio_mode = "auto". No @pytest.mark.asyncio decorators. Docker Compose test file for spinning up PostgreSQL in CI.</description>
-      <files>server/tests/__init__.py, server/tests/conftest.py, server/tests/factories.py, server/docker-compose.test.yml</files>
-      <verification>pytest discovers tests. Test database created/destroyed per session. Fixtures provide authenticated client instances for admin and regular user.</verification>
-      <done-condition>pytest --co lists all test files, fixtures work, test DB lifecycle clean</done-condition>
-      <token-estimate>10000</token-estimate>
-      <complexity score="13" tier="STANDARD" confidence="80" model="sonnet">
-        <dimension name="scope" score="2" rationale="4 files" />
-        <dimension name="integration" score="2" rationale="Real PostgreSQL, httpx AsyncClient, Alembic migrations in test" />
-        <dimension name="infrastructure" score="2" rationale="Test database lifecycle, Docker Compose" />
-        <dimension name="knowledge" score="2" rationale="pytest-asyncio auto mode, async fixture patterns" />
-        <dimension name="risk" score="1" rationale="Test infrastructure only" />
-        <dimension name="testing" score="2" rationale="Meta: testing the test infrastructure" />
-        <dimension name="decomposability" score="1" rationale="Fixtures independent" />
-        <multipliers applied="none" adjusted="1.0x" />
-        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
-      </complexity>
-    </task>
-    <task id="T-1-6-2">
-      <description>Create auth integration tests: test_auth.py — full auth flow: register first admin → login → verify JWT → refresh token → change password → login with new password. must_change_password flag enforcement. Subsequent register blocked (403). Session creation and revocation. Non-admin 403 on admin endpoints. Create RLS isolation tests: test_rls.py — create two users (Alice, Bob). Alice creates documents, conversations, memories. Bob queries same tables → sees zero of Alice's private data. Both see shared namespace content. Verify SET/RESET cycle: after request, connection has no app.current_user_id set.</description>
-      <files>server/tests/test_auth.py, server/tests/test_rls.py</files>
-      <verification>All auth flow tests pass. RLS isolation proven: user A cannot see user B's private data. Shared data visible to both. No RLS context leak between requests.</verification>
-      <done-condition>Auth flow tests cover all 9 endpoints. RLS tests prove complete isolation across all RLS-protected tables. Zero false positives.</done-condition>
-      <token-estimate>15000</token-estimate>
-      <complexity score="17" tier="COMPLEX" confidence="82" model="opus">
-        <dimension name="scope" score="2" rationale="2 test files, covering 14+ RLS tables" />
-        <dimension name="integration" score="2" rationale="Full app stack via httpx" />
-        <dimension name="infrastructure" score="1" rationale="Code only (uses test infra from T-1-6-1)" />
-        <dimension name="knowledge" score="3" rationale="RLS testing patterns, connection pool behavior" />
-        <dimension name="risk" score="3" rationale="These tests ARE the security verification" />
-        <dimension name="testing" score="3" rationale="Extensive: every auth edge case, every RLS table" />
-        <dimension name="decomposability" score="1" rationale="Auth and RLS tests independent" />
-        <multipliers applied="security-sensitive" adjusted="1.2x" />
-        <integration-hints worktree="false" context-budget="12288" github-artifact="none" />
-      </complexity>
-    </task>
-    <task id="T-1-6-3">
-      <description>Create watcher + parser tests: test_vault.py — VaultRegistry resolves private/shared/unknown paths correctly. Registry refreshes after user creation. test_parser.py — parser extracts frontmatter (YAML with type, tags, title), wikilinks ([[target]], [[target|alias]]), body content. NoteTypeClassifier infers correctly from frontmatter, folder, tags, defaults. test_indexer.py — file create → document record in DB with correct content_hash, note_type, wikilinks. File modify → record updated. File delete → record removed. Debounce prevents double processing. test_docker.py — Docker smoke test: build image, start container, GET /health returns 200 with setup_required=true, create admin, GET /health returns setup_required=false.</description>
-      <files>server/tests/test_vault.py, server/tests/test_parser.py, server/tests/test_indexer.py, server/tests/test_docker.py</files>
-      <verification>All vault/parser/indexer tests pass. Docker smoke test passes. Edge cases covered: empty files, files without frontmatter, nested wikilinks, unicode filenames.</verification>
-      <done-condition>VaultRegistry, parser, NoteTypeClassifier, indexer, and Docker container all verified via automated tests</done-condition>
+      <description>
+        Create server/app/vault/registry.py — VaultRegistry: path-to-owner resolution.
+
+        Implementation:
+        - VaultRegistry class with in-memory mapping of vault paths to (user_id, namespace).
+        - Vault structure: /vaults/private/{username}/ and /vaults/shared/.
+        - rebuild(db: AsyncSession) -> None: queries users table, rebuilds path mapping.
+          /vaults/shared/ maps to (SYSTEM_USER_ID, "shared").
+          /vaults/private/{username}/ maps to (user.id, "private").
+        - resolve(filepath: str) -> tuple[UUID, str] | None:
+          Match filepath against known vault paths. Return (user_id, namespace) or None if outside all vaults.
+        - PostgreSQL LISTEN/NOTIFY integration:
+          On user create/delete, send NOTIFY vault_registry_refresh.
+          Background task listens for vault_registry_refresh and calls rebuild().
+        - Called on app startup to populate initial mapping.
+
+        Thread safety: use threading.Lock for the internal mapping since watchdog events arrive from a background thread.
+      </description>
+      <files>server/app/vault/registry.py</files>
+      <verification>
+        VaultRegistry.resolve("/vaults/private/alice/notes/test.md") returns (alice_user_id, "private").
+        VaultRegistry.resolve("/vaults/shared/docs/readme.md") returns (SYSTEM_USER_ID, "shared").
+        VaultRegistry.resolve("/tmp/random.md") returns None.
+        rebuild() populates mapping from users table.
+        LISTEN/NOTIFY trigger is set up.
+      </verification>
+      <done-condition>
+        VaultRegistry resolves filesystem paths to (user_id, namespace) tuples. Returns None for paths outside known vaults. Rebuilds on startup and on NOTIFY vault_registry_refresh. Thread-safe via Lock.
+      </done-condition>
       <token-estimate>12000</token-estimate>
-      <complexity score="13" tier="STANDARD" confidence="82" model="sonnet">
-        <dimension name="scope" score="2" rationale="4 test files covering 4 modules" />
-        <dimension name="integration" score="2" rationale="Filesystem, watchdog, Docker" />
-        <dimension name="infrastructure" score="2" rationale="Docker build/run in test, temp directories" />
-        <dimension name="knowledge" score="2" rationale="watchdog test patterns, Docker-in-Docker" />
-        <dimension name="risk" score="1" rationale="Test code only" />
-        <dimension name="testing" score="2" rationale="Edge case coverage for parsers" />
-        <dimension name="decomposability" score="1" rationale="Each test file independent" />
-        <multipliers applied="none" adjusted="1.0x" />
-        <integration-hints worktree="false" context-budget="10240" github-artifact="none" />
+      <complexity score="14" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope"           score="1" rationale="Single file" />
+        <dimension name="integration"     score="3" rationale="SQLAlchemy + LISTEN/NOTIFY + threading" />
+        <dimension name="infrastructure"  score="2" rationale="PostgreSQL LISTEN/NOTIFY" />
+        <dimension name="knowledge"       score="2" rationale="Path resolution, LISTEN/NOTIFY patterns" />
+        <dimension name="risk"            score="2" rationale="Wrong resolution = wrong user sees wrong data" />
+        <dimension name="testing"         score="2" rationale="Unit test resolve + rebuild" />
+        <dimension name="decomposability" score="2" rationale="LISTEN/NOTIFY tightly coupled to rebuild" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-6-2">
+      <description>
+        Create server/app/vault/watcher.py — watchdog file watcher with 300ms debounce.
+
+        Implementation:
+        - VaultEventHandler(FileSystemEventHandler): watches for .md file create/modify/delete/rename.
+        - Debounce: 300ms (from settings vault.watch_debounce_ms). Use a timer dict keyed by filepath.
+          On event, cancel existing timer for that path and set a new one.
+        - Thread-safe handoff to asyncio:
+          Use loop.call_soon_threadsafe(queue.put_nowait, event) per spec.
+          Get loop via asyncio.get_running_loop() (never get_event_loop).
+        - Event types: ("created", path), ("modified", path), ("deleted", path), ("moved", src, dest).
+        - Filter: only .md files. Ignore hidden files/dirs (starting with .).
+        - start_watcher(vault_base_path, loop, queue) -> Observer: creates and starts watchdog Observer.
+        - stop_watcher(observer) -> None: stops the Observer gracefully.
+
+        CRITICAL per spec: use loop.call_soon_threadsafe, NOT asyncio.get_event_loop().
+      </description>
+      <files>server/app/vault/watcher.py</files>
+      <verification>
+        VaultEventHandler only processes .md files.
+        Debounce is 300ms.
+        Uses loop.call_soon_threadsafe for thread handoff.
+        Does NOT use asyncio.get_event_loop().
+        `grep "get_event_loop" server/app/vault/watcher.py` returns no matches.
+        `grep "call_soon_threadsafe" server/app/vault/watcher.py` returns a match.
+      </verification>
+      <done-condition>
+        watchdog Observer watches vault directories for .md changes. Events are debounced at 300ms. Thread-safe handoff to asyncio via call_soon_threadsafe. Only .md files processed. Hidden files ignored.
+      </done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="14" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope"           score="1" rationale="Single file" />
+        <dimension name="integration"     score="3" rationale="watchdog + asyncio + threading" />
+        <dimension name="infrastructure"  score="1" rationale="File watcher, no new infra" />
+        <dimension name="knowledge"       score="3" rationale="Thread-to-asyncio handoff, debounce patterns" />
+        <dimension name="risk"            score="2" rationale="Race conditions in thread handoff" />
+        <dimension name="testing"         score="2" rationale="Create test file, verify event queued" />
+        <dimension name="decomposability" score="2" rationale="Debounce + handoff tightly coupled" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-6-3">
+      <description>
+        Create server/app/vault/indexer.py — IndexQueue: async queue consumer for vault events.
+
+        Implementation:
+        - IndexQueue class wrapping asyncio.Queue.
+        - enqueue(event_type: str, filepath: str, user_id: UUID, namespace: str) -> None: add to queue.
+        - process_queue() -> None: async loop that dequeues events and processes them.
+          Phase 1 processing:
+          - For "created"/"modified": read file, compute content_hash. If content_hash unchanged, skip.
+            Otherwise, upsert document record in DB (file_path, content, content_hash, note_type from classifier, frontmatter).
+            Extract wikilinks and upsert into wikilinks table.
+            Log to index_events table.
+            Do NOT embed (Phase 2).
+          - For "deleted": mark document as deleted or remove from DB. Remove associated chunks and wikilinks.
+          - For "moved": update file_path. Update wikilinks that reference old path.
+        - App-initiated writes: skip watcher by matching content_hash (watcher event arrives but content_hash matches, so no re-index).
+        - bulk_index(db, user_id, namespace, vault_path) -> None: walks vault directory, enqueues all .md files.
+          Used on startup for unindexed vaults.
+
+        Create server/app/api/vault.py — GET /api/v1/vault/index/progress endpoint.
+        - Returns IndexProgressResponse: { current: int, total: int, eta: str|null, status: "idle"|"indexing"|"complete" }
+        - Requires get_current_user.
+        - Reads progress from IndexQueue state.
+
+        Register vault router in server/app/main.py.
+      </description>
+      <files>server/app/vault/indexer.py, server/app/api/vault.py, server/app/main.py</files>
+      <verification>
+        IndexQueue.enqueue adds events to the async queue.
+        process_queue handles created/modified/deleted/moved events.
+        content_hash skip logic prevents re-indexing unchanged files.
+        `grep "embedding" server/app/vault/indexer.py | grep -v "^#"` returns no matches (Phase 1 must not assign embedding field).
+        GET /api/v1/vault/index/progress returns IndexProgressResponse.
+        `grep "Depends(get_current_user)" server/app/api/vault.py` returns a match.
+        Vault router registered in main.py.
+        Endpoint requires Depends(get_current_user).
+      </verification>
+      <done-condition>
+        IndexQueue consumes vault events asynchronously. Documents are upserted with content_hash dedup. Wikilinks extracted and stored. Deletions cascade. GET /api/v1/vault/index/progress reports current/total/status. Bulk index walks entire vault directory.
+      </done-condition>
+      <token-estimate>18000</token-estimate>
+      <complexity score="16" tier="STANDARD" confidence="75" model="sonnet">
+        <dimension name="scope"           score="2" rationale="3 files, queue + processing + API" />
+        <dimension name="integration"     score="3" rationale="asyncio.Queue + SQLAlchemy + file I/O + wikilinks" />
+        <dimension name="infrastructure"  score="1" rationale="Queue + endpoint, no new infra" />
+        <dimension name="knowledge"       score="2" rationale="Async queue patterns, content hashing, upsert" />
+        <dimension name="risk"            score="2" rationale="Wrong indexing = stale/missing data" />
+        <dimension name="testing"         score="3" rationale="Queue lifecycle, each event type, hash dedup" />
+        <dimension name="decomposability" score="3" rationale="Queue consumer depends on parser + registry + models" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-6-4">
+      <description>
+        Create server/app/vault/parser.py — Markdown frontmatter extraction and wikilink parsing.
+
+        Implementation:
+        - parse_markdown(filepath: str) -> ParsedNote:
+          Uses python-frontmatter to extract YAML frontmatter and content body.
+          Returns ParsedNote dataclass: { frontmatter: dict, content: str, title: str, file_path: str }
+          Title: from frontmatter "title" key, or filename without extension.
+        - extract_wikilinks(content: str) -> list[WikilinkRef]:
+          Regex: \[\[([^\]|]+)(?:\|([^\]]+))?\]\]
+          Captures target (group 1) and optional alias (group 2).
+          Returns list of WikilinkRef dataclass: { target: str, alias: str|None }
+          Handles edge cases: nested brackets, escaped brackets, code blocks (skip).
+
+        Create server/app/rag/note_type.py — NoteTypeClassifier.
+
+        Implementation:
+        - NoteTypeClassifier class.
+        - classify(frontmatter: dict, folder_path: str, tags: list[str]) -> str:
+          Returns one of: "fleeting", "literature", "permanent", "project", "reference", "index".
+          Priority:
+          1. Explicit frontmatter "type" field → use directly.
+          2. Folder matching (from settings zettelkasten.note_types):
+             - fleeting_folders → "fleeting"
+             - project_folders → "project"
+          3. Tag matching:
+             - fleeting_tags → "fleeting"
+             - project_tags → "project"
+          4. Default: "permanent" (the Zettelkasten atomic note type).
+        - Uses settings from config module for folder/tag patterns.
+      </description>
+      <files>server/app/vault/parser.py, server/app/rag/note_type.py</files>
+      <verification>
+        parse_markdown extracts frontmatter dict and content string.
+        extract_wikilinks("See [[Target]] and [[Other|Alias]]") returns [{target: "Target", alias: None}, {target: "Other", alias: "Alias"}].
+        Wikilinks inside code blocks are NOT extracted.
+        NoteTypeClassifier with frontmatter {"type": "literature"} returns "literature".
+        NoteTypeClassifier with folder "/inbox/test.md" returns "fleeting" (matched by fleeting_folders).
+        Default classification is "permanent".
+      </verification>
+      <done-condition>
+        Markdown parser extracts frontmatter and wikilinks correctly (including [[Target|Alias]] syntax). Code blocks are skipped during wikilink extraction. NoteTypeClassifier infers type from frontmatter > folder > tags > default("permanent"). Settings-driven folder/tag patterns work.
+        Runnable check: `python -c "from app.vault.parser import extract_wikilinks; result = extract_wikilinks('See [[Target]] and [[Other|Alias]]'); assert len(result) == 2 and result[1].alias == 'Alias'"` exits 0.
+        Runnable check: `python -c "from app.rag.note_type import NoteTypeClassifier; c = NoteTypeClassifier(); assert c.classify({'type': 'literature'}, '', []) == 'literature'"` exits 0.
+        Integration coverage: `pytest server/tests/integration/test_vault.py -k "parser or classifier" -v` exits 0 after PLAN-1-7 is complete.
+      </done-condition>
+      <token-estimate>12000</token-estimate>
+      <complexity score="12" tier="STANDARD" confidence="85" model="sonnet">
+        <dimension name="scope"           score="2" rationale="2 files" />
+        <dimension name="integration"     score="2" rationale="python-frontmatter + regex + config" />
+        <dimension name="infrastructure"  score="1" rationale="Pure logic, no infra" />
+        <dimension name="knowledge"       score="2" rationale="Wikilink regex, Zettelkasten note types" />
+        <dimension name="risk"            score="1" rationale="Wrong classification is correctable" />
+        <dimension name="testing"         score="2" rationale="Many edge cases in wikilink regex" />
+        <dimension name="decomposability" score="2" rationale="Parser and classifier are semi-independent" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-6-5">
+      <description>
+        Wire vault subsystem into app startup in server/app/main.py.
+
+        Startup sequence additions:
+        1. Create VaultRegistry instance. Call registry.rebuild(db) on startup.
+        2. Create asyncio.Queue for vault events.
+        3. Start IndexQueue consumer as a background task (asyncio.create_task).
+        4. Start watchdog Observer via start_watcher(settings.vault.base_path, loop, queue).
+        5. Set up LISTEN/NOTIFY listener for vault_registry_refresh.
+
+        Shutdown sequence:
+        1. Stop watchdog Observer.
+        2. Cancel IndexQueue consumer task.
+        3. Close LISTEN/NOTIFY connection.
+
+        Register vault_registry as app state (app.state.vault_registry) for access in route handlers.
+      </description>
+      <files>server/app/main.py</files>
+      <verification>
+        App startup creates VaultRegistry, starts watcher, starts IndexQueue consumer.
+        App shutdown stops watcher and cancels consumer.
+        VaultRegistry is accessible via app.state.vault_registry.
+        Uses asyncio.get_running_loop() (not get_event_loop).
+      </verification>
+      <done-condition>
+        Application startup initializes VaultRegistry (rebuild from DB), starts watchdog Observer on vault base path, starts IndexQueue consumer as background task, and sets up LISTEN/NOTIFY. Shutdown gracefully stops all three. VaultRegistry accessible from route handlers via app.state.
+      </done-condition>
+      <token-estimate>8000</token-estimate>
+      <complexity score="13" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope"           score="1" rationale="Single file (main.py modifications)" />
+        <dimension name="integration"     score="3" rationale="Registry + watcher + queue + LISTEN/NOTIFY" />
+        <dimension name="infrastructure"  score="2" rationale="Background tasks + PostgreSQL LISTEN" />
+        <dimension name="knowledge"       score="2" rationale="asyncio lifecycle, FastAPI lifespan" />
+        <dimension name="risk"            score="2" rationale="Bad shutdown = resource leaks" />
+        <dimension name="testing"         score="2" rationale="Integration test: app start/stop" />
+        <dimension name="decomposability" score="1" rationale="Sequential startup wiring" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
       </complexity>
     </task>
   </tasks>
-  <dependencies>PLAN-1-6 depends on PLAN-1-2 (auth endpoints) and PLAN-1-3 (watcher + parser)</dependencies>
+  <dependencies>PLAN-1-6 depends on PLAN-1-3 (needs Document, Chunk, Wikilink models + DB session) and PLAN-1-4 (needs get_current_user for vault API endpoint)</dependencies>
+  <decisions>
+    <decision task="T-1-6-5" timestamp="2026-04-13T00:00:00Z">
+      <choice>Used asyncio.ensure_future(registry.rebuild_bg(), loop=loop) inside the asyncpg listener callback instead of loop.call_soon_threadsafe with a create_task wrapper</choice>
+      <rationale>asyncpg listener callbacks run on the asyncio event loop thread, so ensure_future is safe and avoids the complexity of a threadsafe wrapper. The loop reference captured in the closure is the same running loop as the one used throughout the lifespan.</rationale>
+      <alternatives-considered>loop.call_soon_threadsafe(asyncio.create_task, ...) — rejected because create_task is not thread-safe and call_soon_threadsafe cannot schedule coroutines directly; asyncio.create_task inside callback — rejected as asyncpg docs suggest callbacks may not always be on the event loop thread.</alternatives-considered>
+    </decision>
+    <decision task="T-1-6-3" timestamp="2026-04-13T00:00:00Z">
+      <choice>IndexQueue opens its own AsyncSession per event via _AsyncSessionFactory rather than accepting a db session parameter</choice>
+      <rationale>Queue items are processed asynchronously and long after the originating HTTP request session has closed. Each _process_event call therefore needs its own independent database session to avoid holding connections open across the full queue drain time.</rationale>
+      <alternatives-considered>Passing a db session into process_queue — rejected: sessions are not safe to hold open across arbitrary async waits; using a dependency-injected session pool — rejected: over-engineered for a background task.</alternatives-considered>
+    </decision>
+  </decisions>
 </plan>

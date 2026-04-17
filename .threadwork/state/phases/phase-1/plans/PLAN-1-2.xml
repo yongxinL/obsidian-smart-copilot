@@ -1,61 +1,223 @@
 <plan id="PLAN-1-2" phase="1" milestone="1">
-  <title>Authentication System — JWT, User Registration, Admin Management</title>
-  <requirements>REQ-003, REQ-004</requirements>
+  <title>Docker Container — Dockerfile, supervisord, wait-for-pg, Health Endpoint</title>
+  <requirements>REQ-001</requirements>
+  <!-- Single-container deployment: pgvector base image, supervisord manages PostgreSQL + FastAPI,
+       wait-for-pg.sh runs Alembic before starting uvicorn. GET /health returns 200 within 30s. -->
   <tasks>
     <task id="T-1-2-1">
-      <description>Create auth service modules: jwt.py (python-jose: create_access_token, create_refresh_token, verify_token with HS256, configurable expiry from settings), password.py (argon2-cffi: hash_password, verify_password — no passlib wrapper), middleware.py (get_current_user from JWT Bearer header, require_admin dependency). Wire get_current_user and require_admin into dependencies.py exports. Create auth Pydantic schemas: LoginRequest, LoginResponse (access_token, refresh_token, user), RegisterRequest, ChangePasswordRequest, RefreshRequest, UserResponse, SessionResponse.</description>
-      <files>server/app/auth/__init__.py, server/app/auth/jwt.py, server/app/auth/password.py, server/app/auth/middleware.py, server/app/schemas/auth.py</files>
-      <verification>JWT round-trip: create → verify succeeds. argon2-cffi hash → verify succeeds. get_current_user rejects invalid tokens. require_admin rejects non-admin users.</verification>
-      <done-condition>Auth service modules importable and unit-testable in isolation</done-condition>
+      <description>
+        Create server/Dockerfile based on pgvector/pgvector:pg16.
+
+        Multi-stage build:
+        1. Stage 1 (builder): python:3.12-slim, install Python deps from pyproject.toml.
+        2. Stage 2 (runtime): pgvector/pgvector:pg16, install Python 3.12, supervisord, copy built packages.
+
+        Key requirements:
+        - Install supervisord via apt (supervisor package).
+        - Copy server/ code into /app/.
+        - Copy supervisord.conf to /etc/supervisord.conf.
+        - Copy wait-for-pg.sh to /app/scripts/ and chmod +x.
+        - EXPOSE 8000.
+        - HEALTHCHECK: curl -f http://localhost:8000/health || exit 1 (interval=10s, timeout=5s, retries=3, start-period=30s).
+        - CMD: ["supervisord", "-c", "/etc/supervisord.conf"]
+        - ENV: PGDATA=/var/lib/postgresql/data, DATABASE_URL default for internal postgres.
+        - Support EXTERNAL_DB=true: when set, supervisord config skips PostgreSQL program.
+      </description>
+      <files>server/Dockerfile</files>
+      <verification>
+        `docker build -t smart-copilot-test ./server` succeeds.
+        Dockerfile contains HEALTHCHECK directive.
+        Dockerfile uses pgvector/pgvector:pg16 as base (runtime stage).
+        EXPOSE 8000 is present.
+      </verification>
+      <done-condition>
+        Docker image builds successfully. Dockerfile uses pgvector/pgvector:pg16 base, installs Python 3.12 + supervisord, includes HEALTHCHECK, exposes port 8000.
+      </done-condition>
       <token-estimate>12000</token-estimate>
-      <complexity score="14" tier="STANDARD" confidence="88" model="sonnet">
-        <dimension name="scope" score="2" rationale="5 files across auth/ and schemas/" />
-        <dimension name="integration" score="2" rationale="python-jose, argon2-cffi" />
-        <dimension name="infrastructure" score="1" rationale="Code only" />
-        <dimension name="knowledge" score="2" rationale="JWT patterns, argon2 API" />
-        <dimension name="risk" score="3" rationale="Auth is security-critical" />
-        <dimension name="testing" score="1" rationale="Unit tests only at this stage" />
-        <dimension name="decomposability" score="1" rationale="Each module independent" />
-        <multipliers applied="security-sensitive" adjusted="1.2x" />
-        <integration-hints worktree="false" context-budget="10240" github-artifact="none" />
+      <complexity score="13" tier="STANDARD" confidence="85" model="sonnet">
+        <dimension name="scope"           score="1" rationale="Single Dockerfile" />
+        <dimension name="integration"     score="3" rationale="pgvector + Python + supervisord + alembic" />
+        <dimension name="infrastructure"  score="3" rationale="New Docker container with PostgreSQL" />
+        <dimension name="knowledge"       score="2" rationale="Multi-stage Docker + supervisord + pgvector" />
+        <dimension name="risk"            score="1" rationale="Infrastructure, not user-facing" />
+        <dimension name="testing"         score="2" rationale="Build + run + health check" />
+        <dimension name="decomposability" score="1" rationale="Single file, sequential layers" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
       </complexity>
     </task>
+
     <task id="T-1-2-2">
-      <description>Create auth API endpoints (9 total): POST /api/v1/auth/register (first user = admin, subsequent blocked when allow_registration=false), POST /api/v1/auth/login (returns tokens + user, sets must_change_password flag), POST /api/v1/auth/refresh (rotate refresh token, hash stored in sessions table), POST /api/v1/auth/change-password (requires current password), GET /api/v1/auth/me (returns user profile), PATCH /api/v1/auth/me (update email, display_name, title), PATCH /api/v1/auth/me/avatar (stub — returns 501 for Phase 1), GET /api/v1/auth/sessions (list active sessions), DELETE /api/v1/auth/sessions/{id} (revoke session, cannot revoke own current session). Thin route handlers calling service functions. Register creates vault directory at {vault.base_path}/private/{username}/.</description>
-      <files>server/app/api/auth.py</files>
-      <verification>Register → login → refresh → change-password flow completes. First user gets admin role. Subsequent register blocked. must_change_password flag returned correctly. Session revocation works.</verification>
-      <done-condition>All 9 auth endpoints functional, first-user admin bootstrap works, refresh token rotation stores hash in sessions table</done-condition>
-      <token-estimate>18000</token-estimate>
-      <complexity score="17" tier="COMPLEX" confidence="82" model="opus">
-        <dimension name="scope" score="2" rationale="1 file but 9 endpoints with distinct logic" />
-        <dimension name="integration" score="2" rationale="JWT, argon2, sessions table, vault directory creation" />
-        <dimension name="infrastructure" score="1" rationale="Code only" />
-        <dimension name="knowledge" score="2" rationale="Refresh token rotation, session management" />
-        <dimension name="risk" score="3" rationale="Auth security, first-user bootstrap is tricky" />
-        <dimension name="testing" score="2" rationale="Each endpoint needs integration test" />
-        <dimension name="decomposability" score="2" rationale="9 endpoints are individually testable but share auth state" />
-        <multipliers applied="security-sensitive" adjusted="1.2x" />
-        <integration-hints worktree="false" context-budget="16384" github-artifact="none" />
+      <description>
+        Create server/supervisord.conf with nodaemon=true (required for Docker PID 1).
+
+        Programs:
+        1. [program:postgresql] — PostgreSQL managed via pg_ctlcluster or direct postmaster.
+           autostart=true, autorestart=true, priority=10.
+           Conditional: skip when EXTERNAL_DB=true (use environment-based conditional or separate config).
+        2. [program:fastapi] — Runs /app/scripts/wait-for-pg.sh which starts uvicorn after DB is ready.
+           autostart=true, autorestart=true, priority=20 (starts after postgresql).
+
+        [supervisord] section: nodaemon=true, logfile=/var/log/supervisord.log.
+
+        CRITICAL: nodaemon=true must be set or container exits immediately.
+      </description>
+      <files>server/supervisord.conf</files>
+      <verification>
+        `grep "nodaemon=true" server/supervisord.conf` succeeds.
+        Both postgresql and fastapi programs are defined.
+        Priority ordering ensures postgresql starts before fastapi.
+      </verification>
+      <done-condition>
+        supervisord.conf contains [supervisord] with nodaemon=true. Two programs defined: postgresql (priority=10) and fastapi (priority=20). PostgreSQL program can be skipped via EXTERNAL_DB.
+      </done-condition>
+      <token-estimate>5000</token-estimate>
+      <complexity score="9" tier="SIMPLE" confidence="90" model="haiku">
+        <dimension name="scope"           score="1" rationale="Single config file" />
+        <dimension name="integration"     score="2" rationale="PostgreSQL + uvicorn orchestration" />
+        <dimension name="infrastructure"  score="2" rationale="Process supervisor config" />
+        <dimension name="knowledge"       score="2" rationale="supervisord patterns for Docker" />
+        <dimension name="risk"            score="1" rationale="Bad config caught at container start" />
+        <dimension name="testing"         score="1" rationale="grep check" />
+        <dimension name="decomposability" score="1" rationale="Atomic config file" />
+        <integration-hints worktree="false" context-budget="4096" github-artifact="task" />
       </complexity>
     </task>
+
     <task id="T-1-2-3">
-      <description>Create admin user management endpoints: GET /api/v1/admin/users (list with stats), POST /api/v1/admin/users (create user with auto-generated temp password, must_change_password=true, create vault directory), PATCH /api/v1/admin/users/{id} (update role/email, cannot change own role, username immutable), POST /api/v1/admin/users/{id}/reset-password (generate temp password, shown once), DELETE /api/v1/admin/users/{id} (requires typed username confirmation, deletes DB records NOT vault files). All behind Depends(require_admin). Create admin Pydantic schemas: UserCreateAdmin, UserUpdateAdmin, UserListResponse, PasswordResetResponse.</description>
-      <files>server/app/api/admin.py, server/app/schemas/admin.py</files>
-      <verification>Admin can create users, reset passwords, change roles. Non-admin gets 403. Self-role-change blocked. Delete requires confirmation. Vault directory created on user creation.</verification>
-      <done-condition>All 5 admin user endpoints functional behind require_admin, temp passwords generated correctly, vault directories created</done-condition>
-      <token-estimate>12000</token-estimate>
-      <complexity score="14" tier="STANDARD" confidence="85" model="sonnet">
-        <dimension name="scope" score="2" rationale="2 files, 5 endpoints" />
-        <dimension name="integration" score="1" rationale="Only internal dependencies" />
-        <dimension name="infrastructure" score="1" rationale="Code + filesystem mkdir" />
-        <dimension name="knowledge" score="2" rationale="Admin guard patterns, self-demotion prevention" />
-        <dimension name="risk" score="3" rationale="Admin operations, user deletion" />
-        <dimension name="testing" score="2" rationale="Permission boundary tests needed" />
-        <dimension name="decomposability" score="1" rationale="Endpoints independent" />
-        <multipliers applied="security-sensitive" adjusted="1.2x" />
-        <integration-hints worktree="false" context-budget="10240" github-artifact="none" />
+      <description>
+        Create server/scripts/wait-for-pg.sh — polls pg_isready, runs Alembic, starts uvicorn.
+
+        Script flow:
+        1. Wait for PostgreSQL: loop with pg_isready until success (max 60 retries, 1s apart).
+        2. Run alembic upgrade head (from /app/ directory, using sync DATABASE_URL).
+        3. Start uvicorn: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1`.
+
+        When EXTERNAL_DB=true: skip pg_isready check (external DB assumed ready), still run alembic.
+        Script must be executable (chmod +x in Dockerfile).
+        Use #!/bin/bash shebang. Exit on any error (set -e).
+      </description>
+      <files>server/scripts/wait-for-pg.sh</files>
+      <verification>
+        Script has #!/bin/bash shebang and set -e.
+        Contains pg_isready polling loop.
+        Runs `alembic upgrade head` before uvicorn.
+        EXTERNAL_DB=true skips pg_isready.
+      </verification>
+      <done-condition>
+        wait-for-pg.sh: polls pg_isready in a loop, runs alembic upgrade head, then starts uvicorn on 0.0.0.0:8000. EXTERNAL_DB=true skips the pg_isready check.
+      </done-condition>
+      <token-estimate>4000</token-estimate>
+      <complexity score="8" tier="SIMPLE" confidence="95" model="haiku">
+        <dimension name="scope"           score="1" rationale="Single shell script" />
+        <dimension name="integration"     score="2" rationale="pg_isready + alembic + uvicorn" />
+        <dimension name="infrastructure"  score="1" rationale="Script, not new infra" />
+        <dimension name="knowledge"       score="1" rationale="Standard wait-for-db pattern" />
+        <dimension name="risk"            score="1" rationale="Failure = container won't start, fast feedback" />
+        <dimension name="testing"         score="1" rationale="Run in Docker" />
+        <dimension name="decomposability" score="1" rationale="Sequential script" />
+        <integration-hints worktree="false" context-budget="4096" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-2-4">
+      <description>
+        Create server/app/main.py — FastAPI application with GET /health endpoint.
+
+        FastAPI app setup:
+        - title="Smart Copilot", version="1.0.0"
+        - CORS middleware with origins from settings.yaml server.cors_origins.
+        - Include API routers (auth, admin, vault — added in later plans, import-guarded for now).
+
+        GET /health endpoint (in server/app/api/health.py):
+        - Returns: { status: "ok", setup_required: bool, version: str, database: str, indexing: dict|null }
+        - setup_required: true when users table has 0 rows.
+        - database: "connected" or "error".
+        - version: from config or system_config table.
+        - indexing: null in Phase 1 (placeholder for Phase 2 progress).
+        - This is the ONE route allowed to query DB directly (no service layer).
+
+        Startup event:
+        - Load settings (fail fast if missing).
+        - Create async engine and session factory.
+        - Log "Smart Copilot backend started" at INFO.
+      </description>
+      <files>server/app/main.py, server/app/api/health.py</files>
+      <verification>
+        `python -c "from app.main import app; print(app.title)"` outputs "Smart Copilot".
+        GET /health route is registered.
+        Health endpoint returns setup_required field.
+        CORS middleware is configured.
+      </verification>
+      <done-condition>
+        FastAPI app starts with GET /health returning {status: "ok", setup_required: true, version: "1.0.0", database: "connected"|"error"} within 30 seconds of container start. CORS configured from settings.yaml.
+      </done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="11" tier="SIMPLE" confidence="90" model="sonnet">
+        <dimension name="scope"           score="2" rationale="2 files, app bootstrap + health" />
+        <dimension name="integration"     score="2" rationale="FastAPI + SQLAlchemy engine + config" />
+        <dimension name="infrastructure"  score="1" rationale="App entrypoint, not new infra" />
+        <dimension name="knowledge"       score="1" rationale="Standard FastAPI app setup" />
+        <dimension name="risk"            score="2" rationale="Health endpoint is public-facing" />
+        <dimension name="testing"         score="2" rationale="Docker run + curl check" />
+        <dimension name="decomposability" score="1" rationale="Cohesive: app + health endpoint" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-2-5">
+      <description>
+        Create server/alembic.ini and server/alembic/env.py for migration infrastructure.
+
+        alembic.ini:
+        - script_location = alembic
+        - sqlalchemy.url placeholder (overridden by env.py).
+
+        alembic/env.py:
+        - ONLY file that imports psycopg2 — add explicit comment: "psycopg2 only used here; app uses asyncpg."
+        - get_url() converts DATABASE_URL from asyncpg to psycopg2 format.
+        - target_metadata from app.models (Base.metadata).
+        - run_migrations_offline() and run_migrations_online() standard functions.
+        - Import all models so autogenerate detects them.
+      </description>
+      <files>server/alembic.ini, server/alembic/env.py, server/alembic/script.py.mako</files>
+      <verification>
+        `grep "psycopg2" server/alembic/env.py` returns a match.
+        `grep "psycopg2" server/app/` returns no matches (enforcement rule).
+        alembic.ini points to alembic/ script location.
+        env.py imports target_metadata from app models.
+      </verification>
+      <done-condition>
+        alembic/env.py is the only file importing psycopg2 (with explicit comment). Converts asyncpg URL to psycopg2 format. alembic.ini configured. script.py.mako template present.
+      </done-condition>
+      <token-estimate>6000</token-estimate>
+      <complexity score="10" tier="SIMPLE" confidence="90" model="haiku">
+        <dimension name="scope"           score="2" rationale="3 files" />
+        <dimension name="integration"     score="2" rationale="Alembic + SQLAlchemy + psycopg2 isolation" />
+        <dimension name="infrastructure"  score="2" rationale="Migration infrastructure" />
+        <dimension name="knowledge"       score="2" rationale="Alembic async/sync split pattern" />
+        <dimension name="risk"            score="1" rationale="Standard migration setup" />
+        <dimension name="testing"         score="1" rationale="grep enforcement check" />
+        <dimension name="decomposability" score="1" rationale="Cohesive migration trio" />
+        <integration-hints worktree="false" context-budget="4096" github-artifact="task" />
       </complexity>
     </task>
   </tasks>
-  <dependencies>PLAN-1-2 depends on PLAN-1-1 (needs app skeleton, models, migration, dependencies.py)</dependencies>
+  <dependencies>PLAN-1-2 depends on PLAN-1-1 (needs pyproject.toml, config.py, directory structure)</dependencies>
+  <decisions>
+    <decision task="T-1-2-2" timestamp="2026-04-13T08:10:00.000Z">
+      <choice>Added entrypoint.sh to strip the postgresql program block when EXTERNAL_DB=true, rather than using supervisord include directives or a second static conf file.</choice>
+      <rationale>Supervisord has no native environment-conditional program loading. Using an entrypoint script that generates a filtered supervisord config at container start is the cleanest runtime approach without requiring two static conf files to be maintained in sync.</rationale>
+      <alternatives-considered>Two static supervisord conf files (rejected: duplication); supervisord [include] with conditional path (rejected: still requires the file to exist at a fixed path); environment variable expansion in command= (rejected: supervisord does not skip a program if its command is empty).</alternatives-considered>
+    </decision>
+    <decision task="T-1-2-4" timestamp="2026-04-13T08:15:00.000Z">
+      <choice>Used try/except ImportError guards around auth/admin/vault router imports in main.py rather than conditional imports via importlib.</choice>
+      <rationale>Those modules are stub __init__.py files in Phase 1 without a router attribute. The try/except approach is idiomatic FastAPI for optional routers and avoids AttributeError as well as ImportError when the submodule exists but lacks the router symbol.</rationale>
+      <alternatives-considered>importlib.util.find_spec (rejected: does not guard AttributeError on existing stubs); separate router registration module (rejected: over-engineering for Phase 1 stubs).</alternatives-considered>
+    </decision>
+    <decision task="T-1-2-5" timestamp="2026-04-13T08:20:00.000Z">
+      <choice>Imported Base from app.models.base (not re-exported via app.models.__init__) in alembic/env.py.</choice>
+      <rationale>app.models.__init__ imports all model classes for side effects (registering them against Base.metadata) but does not re-export Base itself. Importing directly from app.models.base is explicit and avoids relying on an undeclared __init__ export.</rationale>
+      <alternatives-considered>Importing Base from app.models (rejected: Base is not exported from __init__); adding Base to __init__.__all__ (rejected: that would be a PLAN-1-1 concern, not appropriate to change here).</alternatives-considered>
+    </decision>
+  </decisions>
 </plan>

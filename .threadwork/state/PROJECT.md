@@ -83,15 +83,15 @@ smart-copilot/
 
 ## Architecture Constraints
 
-- Single Docker container via supervisord (PostgreSQL + FastAPI)
-- No Redis, no Celery — asyncio + ProcessPoolExecutor only
-- Single-process Python backend (no horizontal scaling)
-- 3–10 concurrent users maximum
-- PostgreSQL RLS for data isolation (14 user-scoped tables)
-- ENCRYPTION_KEY env var is the only secret outside the database
-- SSE for streaming (no WebSocket)
-- REST for CRUD
-- 27 locked architecture decisions (see PRD Section 4)
+- Scale: 3–10 concurrent users, 500–5,000 notes per user
+- Deployment: Single Docker container (supervisord: PostgreSQL 16 + FastAPI). External PostgreSQL supported via `EXTERNAL_DB=true`
+- Auth: JWT stateless; 24h access token, 30d refresh; Electron safeStorage for tokens
+- Security: RLS on 14 tables; Fernet encryption for API keys; no CSRF (Bearer-only API)
+- Roles: Two roles — `admin` (first user) and `user`. No custom role hierarchies
+- Platforms: macOS + Windows Electron; web browser via FastAPI StaticFiles (Decision 27); no mobile
+- No external queues: No Redis, no Celery — asyncio + ProcessPoolExecutor only
+- ENCRYPTION_KEY: Only secret in env vars; must persist across container restarts
+- OpenAPI sync: Pre-commit hook; CI fails if TypeScript types don't match committed spec
 
 ## Users
 

@@ -1,49 +1,72 @@
 ---
 domain: frontend
 name: styling
-updated: 2026-04-15
-confidence: 1.0
-tags: [css, css-modules, design-tokens, radix, lucide, accessibility]
+updated: 2025-01-01
+confidence: 0.85
+tags: [css, tailwind, styling, responsive, accessibility]
 ---
 # Styling Standards
 
-> Source: PRD Section 3.3; UI Spec v1.0
+## Rule: Use utility-first CSS with consistent spacing scale
 
-## Rule: CSS Modules with `.sc-` prefix — not Tailwind
+Prefer Tailwind CSS utility classes. Use the design system spacing scale consistently (4px base unit: `p-1`=4px, `p-2`=8px, `p-4`=16px).
 
-Smart Copilot uses CSS Modules for styling. All CSS custom properties use the `--sc-` prefix. No Tailwind. Design tokens defined in `styles/tokens.css`.
-
-```css
-/* ✅ Correct: CSS custom properties */
-:root {
-  --sc-secondary: #4647d3;
-  --sc-primary: #b30066;
-  --sc-color-bg: #f6f6f6;
-}
+```tsx
+// ✅ Correct: utility classes, consistent spacing
+<div className="flex flex-col gap-4 p-6 rounded-lg shadow-sm border border-gray-200">
+  <h2 className="text-xl font-semibold text-gray-900">Title</h2>
+  <p className="text-sm text-gray-600">Description</p>
+</div>
 ```
 
 ```tsx
-// ✅ Correct: CSS module import
-import styles from './ChatPanel.module.css';
-<div className={styles.container}>
+// ❌ Anti-pattern: inline styles, arbitrary values
+<div style={{ padding: '23px', borderRadius: '7px' }}>
+  <h2 style={{ fontSize: '19px', fontWeight: 600 }}>Title</h2>
+</div>
 ```
 
-## Rule: Radix UI for component primitives
+---
 
-Use Radix UI (15 primitives) for accessible, unstyled component primitives. Style via CSS Modules.
+## Rule: Mobile-first responsive design
 
-## Rule: Lucide React as primary icon set
+Always write mobile-first styles. Add breakpoints for larger screens, never the reverse.
 
-Lucide React for all navigation, action, and UI icons. Material Symbols Outlined (Google variable font) as fallback only when an icon is not available in Lucide.
+```tsx
+// ✅ Correct: mobile-first
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+```
 
-## Rule: motion/react for animations
+```tsx
+// ❌ Anti-pattern: desktop-first
+<div className="grid grid-cols-3 max-md:grid-cols-2 max-sm:grid-cols-1 gap-4">
+```
 
-Use motion/react (Framer Motion v11) for panel slides, modals, collapsibles. No CSS-only animations for interactive transitions.
+---
 
-## Rule: Focus styles required on all interactive elements
+## Rule: Always include focus styles for keyboard accessibility
 
-Every interactive element must have a visible focus ring. Use `--sc-secondary` for focus ring colour.
+Every interactive element must have a visible focus ring. Never use `outline-none` without a custom focus style.
 
-## Rule: Semantic HTML elements
+```tsx
+// ✅ Correct
+<button className="focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+  Click me
+</button>
+```
 
-Use `<nav>`, `<button>`, `<article>`, `<section>`, `<aside>` appropriately. Never `<div onClick>` for buttons.
+```tsx
+// ❌ Anti-pattern: removes focus ring with no replacement
+<button className="outline-none focus:outline-none">Click me</button>
+```
+
+---
+
+## Rule: Use semantic HTML elements
+
+Always use the most semantically appropriate HTML element. This improves accessibility and SEO.
+
+- Navigation: `<nav>` not `<div className="nav">`
+- Buttons: `<button>` not `<div onClick>`
+- Article content: `<article>`, `<section>`, `<aside>`
+- Form fields: `<label for>` paired with `<input id>`

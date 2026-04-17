@@ -1,33 +1,22 @@
 {
   "_version": "0.3.0",
-  "_updated": "2026-04-15T12:30:00.000Z",
+  "_updated": "2026-04-17T02:25:11.501Z",
   "projectName": "Smart Copilot",
-  "techStack": "FastAPI + Python (backend) / Electron + React + TypeScript (frontend)",
+  "techStack": "Frontend: Electron + React 18 + TypeScript 5 + Vite (Electron Forge); Backend: FastAPI + Python 3.12 + SQLAlchemy 2.0 async + PostgreSQL 16 + pgvector",
   "currentPhase": 1,
   "currentMilestone": 1,
-  "totalPhases": 8,
-  "totalMilestones": 4,
   "activeTask": null,
   "skillTier": "advanced",
-  "sessionBudget": 400000,
-  "session_token_budget": 400000,
+  "sessionBudget": 800000,
+  "session_token_budget": 800000,
   "default_context": "200k",
   "cost_budget": 10,
   "model_switch_policy": "notify",
   "teamMode": "auto",
-  "maxWorkers": "auto",
-  "verificationType": "smart-copilot-phase1",
-  "autonomyLevel": "guided",
+  "maxWorkers": 1,
   "qualityConfig": {
     "minCoverage": 80,
     "lintLevel": "strict"
   },
-  "projectFiles": {
-    "prd": "docs/product_requirements.md",
-    "uiSpec": "docs/ui-spec.md",
-    "project": ".threadwork/state/PROJECT.md",
-    "requirements": ".threadwork/state/REQUIREMENTS.md",
-    "roadmap": ".threadwork/state/ROADMAP.md"
-  },
-  "_frameworkUpdatedAt": "2026-04-15T12:30:00.000Z"
+  "_frameworkUpdatedAt": "2026-04-17T02:25:11.501Z"
 }

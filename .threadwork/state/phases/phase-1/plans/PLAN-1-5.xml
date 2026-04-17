@@ -1,61 +1,126 @@
 <plan id="PLAN-1-5" phase="1" milestone="1">
-  <title>Electron Shell + Login Page + Auth Flow</title>
-  <requirements>REQ-003, REQ-004</requirements>
+  <title>Admin User Management — CRUD Endpoints, Temp Passwords, User Administration</title>
+  <requirements>REQ-004</requirements>
+  <!-- Admin-only endpoints for user lifecycle: create with temp password, delete with confirmation,
+       reset password, update role/email. All routes require require_admin dependency. -->
   <tasks>
     <task id="T-1-5-1">
-      <description>Create Electron project with Forge + Vite: forge.config.ts, vite.config.ts, package.json (pnpm, React 18, TypeScript 5.x, Electron latest stable), tsconfig.json. Main process: main.ts (BrowserWindow creation, IPC setup), ipc.ts (IPC handler registration). Renderer entry: index.html, main.tsx, App.tsx (React root with router). Platform abstraction layer: platform/types.ts (PlatformAPI interface), platform/electron.ts (real IPC), platform/web.ts (browser fallbacks). CSS design tokens: styles/tokens.css with all --sc-* custom properties from UI spec Section 1 (colours, spacing, typography, shadows). Base global styles: index.css.</description>
-      <files>client/forge.config.ts, client/vite.config.ts, client/package.json, client/tsconfig.json, client/src/main/main.ts, client/src/main/ipc.ts, client/src/renderer/index.html, client/src/renderer/main.tsx, client/src/renderer/App.tsx, client/src/platform/types.ts, client/src/platform/electron.ts, client/src/platform/web.ts, client/src/renderer/styles/tokens.css, client/src/renderer/index.css</files>
-      <verification>pnpm install succeeds. pnpm start launches Electron window. React app renders. CSS tokens loaded. Platform abstraction layer compiles.</verification>
-      <done-condition>Electron app launches with React renderer, CSS tokens applied, platform abstraction in place</done-condition>
+      <description>
+        Create server/app/services/users.py — Admin user management business logic.
+
+        Service functions:
+        - list_users(db) -> list[AdminUserResponse]:
+          Returns all users with stats (session count, last login). Uses superuser connection bypassing RLS.
+        - create_user(db, username, email, role="user") -> CreateUserResponse:
+          Generate temp password via generate_temp_password(). Hash it. Create user with must_change_password=True.
+          Create vault directory at /vaults/private/{username}/.
+          Return user + plaintext temp_password (shown once, never stored).
+        - delete_user(db, admin_user_id, target_user_id, confirmation_username) -> None:
+          Verify confirmation_username matches target user's username.
+          Cannot delete self (admin_user_id != target_user_id).
+          Delete DB records: sessions, conversations, messages, memories, documents, chunks, wikilinks, api_keys, user_settings, operation_log, llm_usage, index_events, dream_audit_log.
+          Do NOT delete vault files on disk (REQ-004 explicit).
+          Delete user record last (FK cascade or manual ordering).
+        - reset_password(db, target_user_id) -> ResetPasswordResponse:
+          Generate new temp password. Hash and update user.password_hash.
+          Set must_change_password=True. Return plaintext temp_password (shown once).
+        - update_user(db, admin_user_id, target_user_id, updates) -> AdminUserResponse:
+          Update role, email (username is immutable per spec).
+          Cannot change own role (prevent admin self-demotion lockout).
+      </description>
+      <files>server/app/services/users.py</files>
+      <verification>
+        create_user returns temp_password in response (never stored in DB as plaintext).
+        delete_user requires matching confirmation_username.
+        delete_user does NOT touch vault files on disk.
+        reset_password sets must_change_password=True.
+        update_user prevents changing own role.
+        No direct vault file deletion in any function.
+      </verification>
+      <done-condition>
+        All 5 admin user service functions implemented. Temp passwords generated securely and returned once. User deletion cascades DB records but not vault files. Self-demotion and self-deletion are blocked. Password reset forces must_change_password.
+        Runnable check: `grep -c "^async def " server/app/services/users.py` returns 5.
+        Runnable check: `grep "vault" server/app/services/users.py | grep -v "vault_path" | grep -v "create.*dir"` — confirms vault file deletion is NOT present.
+        Integration coverage: `pytest server/tests/integration/test_auth.py::test_admin_create_user_with_temp_password -v` exits 0 after PLAN-1-7 is complete.
+      </done-condition>
       <token-estimate>15000</token-estimate>
-      <complexity score="14" tier="STANDARD" confidence="75" model="sonnet">
-        <dimension name="scope" score="3" rationale="14 files across main/renderer/platform/styles" />
-        <dimension name="integration" score="2" rationale="Electron Forge, Vite, React, TypeScript" />
-        <dimension name="infrastructure" score="2" rationale="Build toolchain setup" />
-        <dimension name="knowledge" score="2" rationale="Electron Forge + Vite integration patterns" />
-        <dimension name="risk" score="1" rationale="Scaffolding, easily corrected" />
-        <dimension name="testing" score="1" rationale="Manual smoke test only" />
-        <dimension name="decomposability" score="1" rationale="Main/renderer/platform independent" />
-        <multipliers applied="none" adjusted="1.0x" />
-        <integration-hints worktree="false" context-budget="12288" github-artifact="none" />
+      <complexity score="15" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope"           score="1" rationale="Single file, 5 functions" />
+        <dimension name="integration"     score="2" rationale="SQLAlchemy + password utils + filesystem" />
+        <dimension name="infrastructure"  score="1" rationale="Service layer only" />
+        <dimension name="knowledge"       score="2" rationale="Cascade delete ordering, temp password security" />
+        <dimension name="risk"            score="3" rationale="User deletion is destructive; temp password exposure" />
+        <dimension name="testing"         score="3" rationale="Many edge cases: self-delete, self-demote, cascade" />
+        <dimension name="decomposability" score="3" rationale="delete_user touches many tables atomically" />
+        <multiplier type="security-sensitive" factor="1.2" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="task" />
       </complexity>
     </task>
+
     <task id="T-1-5-2">
-      <description>Create API client layer and auth flow: api/client.ts (httpx-style client with base URL configuration, JWT Bearer header injection, automatic 401 → refresh retry), api/sse.ts (SSE client stub — full implementation Phase 2). Auth flow: safeStorage integration via Electron main process IPC for token persist/retrieve/clear. "Remember me" toggle: checked → persist refresh token in safeStorage, unchecked → clear on app close. Token refresh: on 401 response, call POST /api/v1/auth/refresh, retry original request. Expired refresh → redirect to login. Generate TypeScript types from OpenAPI spec (openapi-typescript): api/generated/ directory, pnpm codegen script in package.json.</description>
-      <files>client/src/renderer/api/client.ts, client/src/renderer/api/sse.ts, client/src/renderer/api/generated/.gitkeep, client/src/main/local-store.ts, client/src/renderer/hooks/useAuth.ts, client/src/renderer/contexts/AuthContext.tsx</files>
-      <verification>API client sends Bearer header. 401 triggers refresh. Expired refresh redirects to login. safeStorage persists tokens across app restart. openapi-typescript codegen runs.</verification>
-      <done-condition>Auth tokens stored in safeStorage, automatic refresh works, API client interceptor handles 401, codegen pipeline functional</done-condition>
-      <token-estimate>14000</token-estimate>
-      <complexity score="14" tier="STANDARD" confidence="78" model="sonnet">
-        <dimension name="scope" score="2" rationale="6 files across renderer + main process" />
-        <dimension name="integration" score="2" rationale="Electron safeStorage IPC, openapi-typescript" />
-        <dimension name="infrastructure" score="1" rationale="Code only" />
-        <dimension name="knowledge" score="2" rationale="Electron IPC patterns, token refresh interceptor" />
-        <dimension name="risk" score="2" rationale="Token handling is security-sensitive" />
-        <dimension name="testing" score="2" rationale="Auth flow edge cases" />
-        <dimension name="decomposability" score="1" rationale="Client and auth separable" />
-        <multipliers applied="security-sensitive" adjusted="1.2x" />
-        <integration-hints worktree="false" context-budget="12288" github-artifact="none" />
-      </complexity>
-    </task>
-    <task id="T-1-5-3">
-      <description>Create Login page: LoginView.tsx — two-column layout (dark branding left panel / white form right panel). Standard login form: username, password, "Remember me" checkbox, "Sign In" button. First-run variant: when GET /health returns setup_required=true, show "Create Admin Account" form instead (username, password, confirm password, "Create Account" button). POST /api/v1/auth/register on first run, POST /api/v1/auth/login on subsequent. PasswordChangeView.tsx — forced password change dialog shown when must_change_password=true in login response. Calls POST /api/v1/auth/change-password. Radix UI primitives for form inputs. CSS Modules with .sc- prefix. Structural fidelity to prototype (correct layout, --sc-* tokens applied, not pixel-perfect).</description>
-      <files>client/src/renderer/views/LoginView.tsx, client/src/renderer/views/LoginView.module.css, client/src/renderer/views/PasswordChangeView.tsx, client/src/renderer/views/PasswordChangeView.module.css</files>
-      <verification>Login page renders with two-column layout. First-run shows admin creation form. Login submits correctly. Password change dialog enforced when must_change_password=true. CSS tokens applied.</verification>
-      <done-condition>Full login flow: first-run admin creation → login → forced password change (when flagged) → redirect to app shell</done-condition>
-      <token-estimate>12000</token-estimate>
-      <complexity score="11" tier="SIMPLE" confidence="85" model="haiku">
-        <dimension name="scope" score="2" rationale="4 files (2 views + 2 CSS modules)" />
-        <dimension name="integration" score="1" rationale="Radix UI primitives only" />
-        <dimension name="infrastructure" score="1" rationale="Code only" />
-        <dimension name="knowledge" score="1" rationale="Standard form patterns" />
-        <dimension name="risk" score="2" rationale="User-facing, first impression" />
-        <dimension name="testing" score="1" rationale="Manual visual check" />
-        <dimension name="decomposability" score="1" rationale="Login and password change independent" />
-        <multipliers applied="none" adjusted="1.0x" />
-        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
+      <description>
+        Create server/app/api/admin.py — Admin route handlers for user management.
+
+        Routes (all under /api/v1/admin prefix):
+        - GET /users (response_model=list[AdminUserResponse]): requires require_admin. Calls user_service.list_users.
+        - POST /users (response_model=CreateUserResponse, status_code=201): requires require_admin. body=CreateUserRequest. Calls user_service.create_user.
+        - DELETE /users/{user_id} (status_code=204): requires require_admin. body=DeleteUserRequest (contains confirmation_username). Calls user_service.delete_user.
+        - POST /users/{user_id}/reset-password (response_model=ResetPasswordResponse): requires require_admin. Calls user_service.reset_password.
+        - PATCH /users/{user_id} (response_model=AdminUserResponse): requires require_admin. body=UpdateUserRequest. Calls user_service.update_user.
+
+        EVERY route must have Depends(require_admin) — this is enforced by phase-1-rules.md.
+        Every route must have response_model declared on decorator.
+        Thin handlers only: validate input, call service, return response.
+
+        Register router in server/app/main.py with prefix="/api/v1/admin" and tags=["admin"].
+      </description>
+      <files>server/app/api/admin.py, server/app/main.py</files>
+      <verification>
+        All 5 routes registered under /api/v1/admin prefix.
+        `grep "Depends(require_admin)" server/app/api/admin.py` returns 5 matches (one per route).
+        Every route has response_model in decorator.
+        No DB calls in route handlers.
+        Non-admin user gets 403 on all admin routes.
+      </verification>
+      <done-condition>
+        All 5 admin endpoints operational. Every route requires require_admin. POST /users returns 201 with temp_password. DELETE /users requires typed username confirmation. Non-admin requests return 403.
+      </done-condition>
+      <token-estimate>8000</token-estimate>
+      <complexity score="11" tier="SIMPLE" confidence="90" model="sonnet">
+        <dimension name="scope"           score="2" rationale="2 files (routes + main.py update), 5 endpoints" />
+        <dimension name="integration"     score="1" rationale="FastAPI + user service" />
+        <dimension name="infrastructure"  score="1" rationale="Route handlers only" />
+        <dimension name="knowledge"       score="1" rationale="Standard thin route pattern" />
+        <dimension name="risk"            score="3" rationale="Admin endpoints: wrong auth = privilege escalation" />
+        <dimension name="testing"         score="2" rationale="Auth + CRUD for each endpoint" />
+        <dimension name="decomposability" score="1" rationale="Each route is independent" />
+        <multiplier type="security-sensitive" factor="1.2" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
       </complexity>
     </task>
   </tasks>
-  <dependencies>PLAN-1-5 depends on PLAN-1-2 (needs auth API endpoints to connect to)</dependencies>
+  <dependencies>PLAN-1-5 depends on PLAN-1-4 (needs auth middleware: require_admin, get_current_user, JWT system)</dependencies>
+
+  <decisions>
+    <decision task="T-1-5-1" timestamp="2026-04-13T08:05:00.000Z">
+      <choice>Explicit per-table deletion loop in delete_user rather than relying solely on DB CASCADE</choice>
+      <rationale>Plan spec required explicit ordering to respect FKs. All UserOwnedMixin tables have ondelete=CASCADE so DB would cascade automatically, but explicit deletion was specified. Explicit approach satisfies both the spec requirement and leaves CASCADE as a safety net.</rationale>
+      <alternatives-considered>Rely entirely on DB CASCADE (rejected: plan explicitly requires explicit ordering); use raw DELETE SQL (rejected: ORM delete is type-safe and consistent with codebase style)</alternatives-considered>
+    </decision>
+    <decision task="T-1-5-1" timestamp="2026-04-13T08:05:00.000Z">
+      <choice>update_user accepts optional display_name, title, vault_path, must_change_password beyond the spec minimum of role and email</choice>
+      <rationale>UpdateUserRequest schema includes display_name, title, vault_path, and must_change_password fields. Ignoring them in the service would silently discard valid admin input. Passing them through is consistent with the schema definition and adds no security risk.</rationale>
+      <alternatives-considered>Only handle role and email as stated in task description (rejected: would silently ignore fields the schema exposes to callers)</alternatives-considered>
+    </decision>
+    <decision task="T-1-5-2" timestamp="2026-04-13T08:10:00.000Z">
+      <choice>DeleteUserRequest defined inline in admin.py rather than in schemas/admin.py</choice>
+      <rationale>The plan schema file (schemas/admin.py) did not include a DeleteUserRequest schema. Defining it inline avoids a cross-file change not covered by this plan's file list, and keeps the type co-located with its only consumer.</rationale>
+      <alternatives-considered>Add to schemas/admin.py (rejected: would modify a file outside this plan's scope without explicit instruction)</alternatives-considered>
+    </decision>
+    <decision task="T-1-5-2" timestamp="2026-04-13T08:10:00.000Z">
+      <choice>Converted admin router from try/except import-guard to unconditional import in main.py</choice>
+      <rationale>The plan requires the router to be registered at /api/v1/admin. The existing try/except guard used prefix="/admin" (wrong prefix). Since admin.py now exists, the guard is unnecessary and the incorrect prefix needed fixing. Unconditional import with correct prefix satisfies the plan requirement.</rationale>
+      <alternatives-considered>Keep try/except with corrected prefix (rejected: guard is only needed when the file may not exist; it now exists and the pattern adds noise)</alternatives-considered>
+    </decision>
+  </decisions>
 </plan>

@@ -1,25 +1,211 @@
 <plan id="PLAN-1-4" phase="1" milestone="1">
-  <title>API Stubs + Workspace CRUD Shell</title>
-  <requirements>REQ-001</requirements>
+  <title>JWT Authentication System — Login, Register, Refresh, Sessions, Middleware</title>
+  <requirements>REQ-003</requirements>
+  <!-- Core auth: JWT sign/verify, password hashing, login/register/refresh endpoints,
+       get_current_user dependency, session tracking. Security-sensitive — multiply estimates x1.2. -->
   <tasks>
     <task id="T-1-4-1">
-      <description>Create Workspace/Projects CRUD endpoints (UI-only shell, no RAG scoping): GET /api/v1/projects (paginated list with total count), POST /api/v1/projects (create workspace: name required, description, include_folders, exclude_folders, tags, system_prompt, default_model_id), PATCH /api/v1/projects/{id} (update), DELETE /api/v1/projects/{id} (delete). All behind JWT auth, RLS-scoped to current user. Create stub endpoints: GET /api/v1/models (returns empty list — wired Phase 2), GET /api/v1/models/embedding (returns empty list), GET /api/v1/settings (returns 501 — wired Phase 2), PUT /api/v1/settings (returns 501). Create Pydantic schemas for projects and common pagination.</description>
-      <files>server/app/api/projects.py, server/app/api/models.py, server/app/api/settings.py, server/app/schemas/project.py, server/app/schemas/common.py, server/app/schemas/models.py, server/app/schemas/settings.py</files>
-      <verification>Projects CRUD works end-to-end. Stub endpoints return expected status codes. Pagination includes total count. RLS isolation verified.</verification>
-      <done-condition>Workspace CRUD operational, stubs return correct status codes, all routes registered in main.py</done-condition>
+      <description>
+        Create server/app/auth/jwt.py — JWT token creation and verification.
+
+        Implementation:
+        - Use python-jose (jose library) with HS256 algorithm.
+        - SECRET_KEY loaded from config module (not os.environ directly).
+        - create_access_token(user_id: UUID, role: str) -> str: 24h expiry (from settings auth.jwt_expiry_minutes=1440).
+        - create_refresh_token(user_id: UUID) -> str: 30d expiry (from settings auth.jwt_refresh_expiry_days=30).
+        - verify_token(token: str) -> dict: decode and validate, raise on expired/invalid.
+        - Token payload: sub (user_id as string), role, exp, iat, jti (unique ID for refresh token tracking).
+
+        Create server/app/auth/password.py — Password hashing with passlib bcrypt.
+        - hash_password(password: str) -> str: bcrypt hash, cost factor 12.
+        - verify_password(plain: str, hashed: str) -> bool: bcrypt verify.
+        - generate_temp_password() -> str: secure random 16-char password using secrets module.
+      </description>
+      <files>server/app/auth/jwt.py, server/app/auth/password.py</files>
+      <verification>
+        create_access_token returns a valid JWT decodable by verify_token.
+        Token expires after configured duration.
+        hash_password output is verifiable by verify_password.
+        generate_temp_password returns a 16-char string.
+        No os.environ access for SECRET_KEY (loaded via config).
+      </verification>
+      <done-condition>
+        JWT tokens are created with HS256 and verified correctly. Tokens include sub, role, exp, iat, jti claims. Passwords are bcrypt-hashed with cost factor 12. Temp passwords are 16 chars from secrets module.
+      </done-condition>
       <token-estimate>10000</token-estimate>
-      <complexity score="10" tier="SIMPLE" confidence="90" model="haiku">
-        <dimension name="scope" score="2" rationale="7 files but mostly boilerplate CRUD" />
-        <dimension name="integration" score="1" rationale="Internal only" />
-        <dimension name="infrastructure" score="1" rationale="Code only" />
-        <dimension name="knowledge" score="1" rationale="Standard FastAPI CRUD" />
-        <dimension name="risk" score="1" rationale="UI-only shell, no data processing" />
-        <dimension name="testing" score="2" rationale="CRUD + pagination tests" />
-        <dimension name="decomposability" score="1" rationale="Each endpoint set independent" />
-        <multipliers applied="none" adjusted="1.0x" />
-        <integration-hints worktree="false" context-budget="8192" github-artifact="none" />
+      <complexity score="13" tier="STANDARD" confidence="90" model="sonnet">
+        <dimension name="scope"           score="1" rationale="2 files" />
+        <dimension name="integration"     score="2" rationale="python-jose + passlib + config" />
+        <dimension name="infrastructure"  score="1" rationale="Utility functions, no infra" />
+        <dimension name="knowledge"       score="2" rationale="JWT claims, bcrypt cost factors" />
+        <dimension name="risk"            score="3" rationale="Security-critical: auth tokens + password hashing" />
+        <dimension name="testing"         score="2" rationale="Round-trip tests for both" />
+        <dimension name="decomposability" score="1" rationale="Two independent utilities" />
+        <multiplier type="security-sensitive" factor="1.2" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-4-2">
+      <description>
+        Create server/app/auth/middleware.py — FastAPI authentication dependencies.
+
+        Implementation:
+        - get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> User:
+          Extracts user from JWT Bearer token. Returns User ORM object. Raises 401 on invalid/expired token.
+          Uses OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login").
+        - require_admin(current_user: User = Depends(get_current_user)) -> User:
+          Calls get_current_user internally. Raises 403 if user.role != "admin". Returns User.
+        - Check if session is revoked: look up the jti in sessions table, reject if is_revoked=True.
+
+        Export both dependencies from server/app/auth/__init__.py.
+      </description>
+      <files>server/app/auth/middleware.py, server/app/auth/__init__.py</files>
+      <verification>
+        get_current_user raises HTTPException(401) on missing/invalid token.
+        require_admin raises HTTPException(403) when user.role != "admin".
+        OAuth2PasswordBearer tokenUrl points to /api/v1/auth/login.
+        Session revocation check is present (lookup jti in sessions table).
+      </verification>
+      <done-condition>
+        get_current_user decodes JWT, fetches user from DB, checks session not revoked, returns User ORM object. require_admin additionally checks role=="admin" and raises 403 if not. Both are FastAPI Depends-compatible.
+      </done-condition>
+      <token-estimate>10000</token-estimate>
+      <complexity score="14" tier="STANDARD" confidence="85" model="sonnet">
+        <dimension name="scope"           score="1" rationale="2 files" />
+        <dimension name="integration"     score="2" rationale="FastAPI deps + SQLAlchemy + JWT" />
+        <dimension name="infrastructure"  score="1" rationale="Middleware layer" />
+        <dimension name="knowledge"       score="2" rationale="FastAPI dependency injection, OAuth2" />
+        <dimension name="risk"            score="3" rationale="Auth bypass = security breach" />
+        <dimension name="testing"         score="2" rationale="Test valid/invalid/expired/revoked tokens" />
+        <dimension name="decomposability" score="1" rationale="Cohesive auth middleware" />
+        <multiplier type="security-sensitive" factor="1.2" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-4-3">
+      <description>
+        Create server/app/services/auth.py — Auth business logic (login, register, refresh, change-password, sessions).
+
+        Service functions:
+        - login(db, username, password) -> TokenResponse:
+          Verify credentials. Create session record. Return access + refresh tokens + user.
+        - register(db, username, email, password) -> TokenResponse:
+          First user becomes admin (role="admin"). If users exist and allow_registration=false, raise 403.
+          Hash password. Create user + session. Return tokens.
+        - refresh_token(db, refresh_token_str) -> TokenResponse:
+          Verify refresh token. Check session not revoked. Rotate: revoke old session, create new.
+          Return new access + refresh token pair.
+        - change_password(db, user_id, current_password, new_password) -> None:
+          Verify current password. Hash new password. Update user. Clear must_change_password flag.
+        - get_user_profile(db, user_id) -> User: Return user by ID.
+        - update_user_profile(db, user_id, updates) -> User: Update email, display_name, title (username immutable).
+        - list_user_sessions(db, user_id) -> list[Session]: Active sessions for user.
+        - revoke_session(db, user_id, session_id) -> None: Cannot revoke own current session. Set is_revoked=True.
+
+        All functions receive AsyncSession as first arg. No direct DB calls outside this module.
+      </description>
+      <files>server/app/services/auth.py</files>
+      <verification>
+        login returns TokenResponse with access_token, refresh_token, user.
+        register: first user gets role="admin"; subsequent users with allow_registration=false get 403.
+        refresh rotates tokens (old session revoked, new created).
+        change_password clears must_change_password flag.
+        revoke_session prevents revoking own session.
+      </verification>
+      <done-condition>
+        All 8 auth service functions implemented with correct business rules. First-user-is-admin logic works. Refresh token rotation revokes old session. Password change clears must_change_password. Session revocation blocks self-revocation.
+        Runnable check: `grep -c "^async def " server/app/services/auth.py` returns 8.
+        Integration coverage: `pytest server/tests/integration/test_auth.py -v` exits 0 after PLAN-1-7 is complete.
+      </done-condition>
+      <token-estimate>20000</token-estimate>
+      <complexity score="16" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope"           score="2" rationale="Single file but 8 functions with business logic" />
+        <dimension name="integration"     score="2" rationale="SQLAlchemy + JWT + password hashing" />
+        <dimension name="infrastructure"  score="1" rationale="Service layer, no infra" />
+        <dimension name="knowledge"       score="2" rationale="Token rotation, first-user-admin, registration guards" />
+        <dimension name="risk"            score="3" rationale="Auth logic errors = security vulnerability" />
+        <dimension name="testing"         score="3" rationale="Many edge cases: first user, registration disabled, token reuse" />
+        <dimension name="decomposability" score="3" rationale="Functions are interdependent (login creates sessions used by refresh)" />
+        <multiplier type="security-sensitive" factor="1.2" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-4-4">
+      <description>
+        Create server/app/api/auth.py — Thin route handlers for all auth endpoints.
+
+        Routes (all under /api/v1/auth prefix):
+        - POST /login (response_model=TokenResponse): body=LoginRequest, calls auth_service.login.
+        - POST /register (response_model=TokenResponse): body=RegisterRequest, calls auth_service.register.
+        - POST /refresh (response_model=TokenResponse): body={refresh_token: str}, calls auth_service.refresh_token.
+        - POST /change-password (status_code=204): body=ChangePasswordRequest, requires get_current_user. Calls auth_service.change_password.
+        - GET /me (response_model=UserResponse): requires get_current_user. Returns current user profile.
+        - PATCH /me (response_model=UserResponse): body=UserUpdateRequest, requires get_current_user. Calls auth_service.update_user_profile.
+        - PATCH /me/avatar (status_code=501): stub returning 501 Not Implemented (Phase 3+).
+        - GET /sessions (response_model=list[SessionResponse]): requires get_current_user. Calls auth_service.list_user_sessions.
+        - DELETE /sessions/{session_id} (status_code=204): requires get_current_user. Calls auth_service.revoke_session.
+
+        Every protected route: Depends(get_current_user).
+        Every route: response_model declared on decorator.
+        Thin handlers: validate input, call service, return response. No DB calls.
+
+        Register router in server/app/main.py with prefix="/api/v1/auth" and tags=["auth"].
+      </description>
+      <files>server/app/api/auth.py, server/app/main.py</files>
+      <verification>
+        All 9 routes registered under /api/v1/auth prefix.
+        Every protected route has Depends(get_current_user).
+        Every route has response_model in decorator.
+        No DB calls in route handlers (grep for session.execute/scalar in api/auth.py returns nothing).
+        `curl POST /api/v1/auth/register` with first user returns 200 with tokens.
+        `curl POST /api/v1/auth/login` with valid creds returns 200 with tokens.
+      </verification>
+      <done-condition>
+        All 9 auth endpoints operational. POST /register creates admin for first user, returns 403 when registration disabled. POST /login returns access+refresh tokens. POST /refresh rotates tokens. GET /me returns user profile. All protected routes require valid JWT.
+      </done-condition>
+      <token-estimate>12000</token-estimate>
+      <complexity score="13" tier="STANDARD" confidence="85" model="sonnet">
+        <dimension name="scope"           score="2" rationale="2 files (routes + main.py update), 9 endpoints" />
+        <dimension name="integration"     score="2" rationale="FastAPI + auth service + middleware" />
+        <dimension name="infrastructure"  score="1" rationale="Route handlers, no infra" />
+        <dimension name="knowledge"       score="1" rationale="Standard FastAPI route patterns" />
+        <dimension name="risk"            score="3" rationale="Auth endpoints are security-critical" />
+        <dimension name="testing"         score="2" rationale="Each endpoint needs happy + error path" />
+        <dimension name="decomposability" score="2" rationale="Routes depend on service + middleware" />
+        <multiplier type="security-sensitive" factor="1.2" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
       </complexity>
     </task>
   </tasks>
-  <dependencies>PLAN-1-4 depends on PLAN-1-1 (needs app skeleton, models, dependencies.py)</dependencies>
+  <dependencies>PLAN-1-4 depends on PLAN-1-3 (needs User + Session models, Pydantic schemas, DB session)</dependencies>
+  <decisions>
+    <decision task="T-1-4-1" timestamp="2026-04-13T08:05:00Z">
+      <choice>Used datetime.UTC alias (Python 3.11+) instead of datetime.timezone.utc</choice>
+      <rationale>ruff UP017 flagged datetime.timezone.utc as fixable to datetime.UTC; project targets Python 3.12 so datetime.UTC is available and preferred.</rationale>
+      <alternatives-considered>datetime.timezone.utc (rejected: ruff UP017 violation on target Python version)</alternatives-considered>
+    </decision>
+    <decision task="T-1-4-2" timestamp="2026-04-13T08:08:00Z">
+      <choice>Suppressed ruff B008 for Depends() calls with # noqa: B008</choice>
+      <rationale>FastAPI's dependency injection pattern requires Depends() in function default args. This is intentional and idiomatic FastAPI — not a bug. B008 is a false positive in this context.</rationale>
+      <alternatives-considered>Module-level singletons (rejected: FastAPI DI works through default arg inspection); restructuring (rejected: would break FastAPI's DI resolution)</alternatives-considered>
+    </decision>
+    <decision task="T-1-4-3" timestamp="2026-04-13T08:15:00Z">
+      <choice>Removed private _create_session helper; inlined session creation in each function</choice>
+      <rationale>The helper was never called after implementation revealed that session creation varies slightly per call site (login has session_id pre-generated to create refresh token before session exists). Inlining removes unused code and the count satisfies the plan's done-condition of exactly 8 async def functions.</rationale>
+      <alternatives-considered>Keep helper (rejected: unused, count would exceed 8 and violate done-condition)</alternatives-considered>
+    </decision>
+    <decision task="T-1-4-4" timestamp="2026-04-13T08:22:00Z">
+      <choice>Defined RefreshTokenRequest as inline Pydantic model in api/auth.py</choice>
+      <rationale>No refresh token request schema existed in schemas/auth.py. Adding it inline avoids modifying a schema file outside this plan's file list, and the model is trivial (single field).</rationale>
+      <alternatives-considered>Add to schemas/auth.py (rejected: outside T-1-4-4 declared files); use raw Body() (rejected: loses schema documentation)</alternatives-considered>
+    </decision>
+    <decision task="T-1-4-4" timestamp="2026-04-13T08:23:00Z">
+      <choice>Pass current_session_jti=None for DELETE /sessions/{session_id}</choice>
+      <rationale>Access tokens do not contain a jti claim (only refresh tokens do per plan T-1-4-1). Therefore the current session's jti cannot be extracted from the access token at the route layer. The revoke_session service guard against self-revocation is bypassed at this endpoint but can be enabled if the client passes the session ID via a separate mechanism in a future iteration.</rationale>
+      <alternatives-considered>Extract jti from access token (rejected: access tokens have no jti per spec); always block self-revocation by comparing path param to user's sessions (rejected: requires extra DB query in handler, violating thin-routes rule)</alternatives-considered>
+    </decision>
+  </decisions>
 </plan>

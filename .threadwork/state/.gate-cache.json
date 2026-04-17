@@ -1,0 +1,133 @@
+{
+  "43e553b61d13a19a73ffb58edb8f64d5da830774-nobuild": {
+    "passed": false,
+    "results": [
+      {
+        "gate": "typecheck",
+        "passed": true,
+        "skipped": true,
+        "errors": [],
+        "reason": "No tsconfig.json found"
+      },
+      {
+        "gate": "lint",
+        "passed": true,
+        "skipped": true,
+        "errors": [],
+        "reason": "No linter configured"
+      },
+      {
+        "gate": "tests",
+        "passed": true,
+        "skipped": true,
+        "failures": [],
+        "coverage": null,
+        "reason": "No package.json found"
+      },
+      {
+        "gate": "spec-compliance",
+        "passed": false,
+        "violations": [
+          {
+            "specId": "SPEC:enf-001",
+            "ruleType": "file_structure",
+            "message": "Project must have a src/index.ts entry point (SPEC:enf-001)",
+            "files": [
+              "src/index.ts"
+            ],
+            "evidence": "No file matching \"src/index.ts\" exists in /home/yongxin.Li/Documents/nexora/smart-copilot"
+          },
+          {
+            "specId": "SPEC:fe-design-001",
+            "ruleType": "grep_must_exist",
+            "message": "All interactive components must have data-testid attributes for testing",
+            "files": [
+              "src/components/**/*.tsx"
+            ],
+            "evidence": "No files matching \"src/components/**/*.tsx\" contain pattern \"data-testid=\""
+          }
+        ],
+        "structuralFailures": [],
+        "skipped": false
+      },
+      {
+        "gate": "doc-freshness",
+        "passed": false,
+        "issues": [
+          {
+            "type": "empty_rule_target",
+            "severity": "warning",
+            "specId": "SPEC:be-001",
+            "message": "Spec \"SPEC:be-001\" rule targets glob \"src/**/*.{ts,tsx,js,py}\" which matches no files",
+            "file": "src/**/*.{ts,tsx,js,py}"
+          },
+          {
+            "type": "empty_rule_target",
+            "severity": "warning",
+            "specId": "SPEC:be-002",
+            "message": "Spec \"SPEC:be-002\" rule targets glob \"src/**/*.{ts,tsx,js,jsx}\" which matches no files",
+            "file": "src/**/*.{ts,tsx,js,jsx}"
+          },
+          {
+            "type": "empty_rule_target",
+            "severity": "warning",
+            "specId": "SPEC:be-002",
+            "message": "Spec \"SPEC:be-002\" rule targets glob \"src/**/*.{ts,py}\" which matches no files",
+            "file": "src/**/*.{ts,py}"
+          },
+          {
+            "type": "empty_rule_target",
+            "severity": "warning",
+            "specId": "SPEC:be-py-001",
+            "message": "Spec \"SPEC:be-py-001\" rule targets glob \"**/*.py\" which matches no files",
+            "file": "**/*.py"
+          },
+          {
+            "type": "empty_rule_target",
+            "severity": "warning",
+            "specId": "SPEC:be-py-001",
+            "message": "Spec \"SPEC:be-py-001\" rule targets glob \"**/*.py\" which matches no files",
+            "file": "**/*.py"
+          },
+          {
+            "type": "dead_design_reference",
+            "severity": "error",
+            "specId": "SPEC:fe-design-001",
+            "message": "Spec \"SPEC:fe-design-001\" has dead design reference: \"designs/homepage.png\" (Homepage — desktop layout)",
+            "file": "designs/homepage.png"
+          },
+          {
+            "type": "dead_design_reference",
+            "severity": "error",
+            "specId": "SPEC:fe-design-001",
+            "message": "Spec \"SPEC:fe-design-001\" has dead design reference: \"designs/homepage-mobile.png\" (Homepage — mobile breakpoint (375px))",
+            "file": "designs/homepage-mobile.png"
+          },
+          {
+            "type": "dead_design_reference",
+            "severity": "error",
+            "specId": "SPEC:fe-design-001",
+            "message": "Spec \"SPEC:fe-design-001\" has dead design reference: \"designs/component-library.html\" (Component library HTML prototype)",
+            "file": "designs/component-library.html"
+          },
+          {
+            "type": "empty_rule_target",
+            "severity": "warning",
+            "specId": "SPEC:test-001",
+            "message": "Spec \"SPEC:test-001\" rule targets glob \"tests/**/*.{ts,tsx,js,jsx,py}\" which matches no files",
+            "file": "tests/**/*.{ts,tsx,js,jsx,py}"
+          }
+        ],
+        "skipped": false
+      },
+      {
+        "gate": "security",
+        "passed": true,
+        "skipped": true,
+        "vulnerabilities": [],
+        "reason": "No lock file found"
+      }
+    ],
+    "ranAt": "2026-04-17T03:13:54.833Z"
+  }
+}

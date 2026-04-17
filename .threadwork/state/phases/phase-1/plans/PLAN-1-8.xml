@@ -1,0 +1,322 @@
+<plan id="PLAN-1-8" phase="1" milestone="1">
+  <title>Electron Shell + API Client + Login Page (Full Spec) + Page Stubs</title>
+  <requirements>REQ-003, REQ-004</requirements>
+  <!-- REQ-005, REQ-006 covered by backend; frontend for vault is Phase 2+.
+       REQ-030 partially addressed (structural stubs for Workspace). -->
+  <!-- Frontend: Electron Forge + Vite + React 18. Login page at full design spec fidelity.
+       Home, Workspace, Customize, Chat History as structural stubs (correct routes, shell, nav rail).
+       API client singleton with typed wrappers. safeStorage for JWT tokens. -->
+  <tasks>
+    <task id="T-1-8-1">
+      <description>
+        Initialize Electron Forge project with vite-typescript template in client/.
+
+        Steps:
+        1. Run `npx create-electron-app client --template=vite-typescript` (or scaffold manually if template layout differs).
+        2. Configure client/package.json:
+           - name: "smart-copilot-client"
+           - engines.node: ">=20"
+           - Scripts: start, build, build:electron, build:web
+           - Dependencies: react, react-dom, react-router-dom, lucide-react, motion (framer-motion v11 rebrand), @radix-ui/react-dialog, @radix-ui/react-dropdown-menu, electron-store
+           - DevDependencies: @types/react, @types/react-dom, typescript, vite, @electron-forge/cli, etc.
+        3. Configure client/tsconfig.json:
+           - strict: true, noImplicitAny: true
+           - paths: { "@/*": ["./src/*"] }
+           - jsx: "react-jsx"
+        4. Configure client/vite.config.ts with path alias for @/.
+        5. Configure client/forge.config.ts for Vite plugin.
+
+        NO TypeScript `any` allowed (strict: true, noImplicitAny: true per enforcement rules).
+      </description>
+      <files>
+        client/package.json,
+        client/tsconfig.json,
+        client/vite.config.ts,
+        client/forge.config.ts
+      </files>
+      <verification>
+        `cd client &amp;&amp; pnpm install` succeeds.
+        `cd client &amp;&amp; pnpm run build` succeeds (or at least TypeScript compiles).
+        tsconfig.json has "strict": true and "noImplicitAny": true.
+        No `: any` in any TypeScript file.
+      </verification>
+      <done-condition>
+        Electron Forge project initializes. TypeScript compiles in strict mode. All React + Radix + motion/react dependencies installed. Path alias @/ configured. forge.config.ts uses Vite plugin.
+      </done-condition>
+      <token-estimate>12000</token-estimate>
+      <complexity score="12" tier="STANDARD" confidence="85" model="sonnet">
+        <dimension name="scope"           score="2" rationale="4 config files + dependency install" />
+        <dimension name="integration"     score="3" rationale="Electron Forge + Vite + React + TypeScript" />
+        <dimension name="infrastructure"  score="2" rationale="New Electron build pipeline" />
+        <dimension name="knowledge"       score="2" rationale="Electron Forge + Vite integration" />
+        <dimension name="risk"            score="1" rationale="Build failure = immediate feedback" />
+        <dimension name="testing"         score="1" rationale="Build succeeds = done" />
+        <dimension name="decomposability" score="1" rationale="Sequential: init → configure → install" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-8-2">
+      <description>
+        Create Electron main process files: main.ts, windows.ts, ipc.ts, local-store.ts.
+
+        client/src/main/main.ts:
+        - Create BrowserWindow, load renderer.
+        - Apply theme before window renders (nativeTheme.themeSource from electron-store).
+        - Register IPC handlers.
+        - On ready: create main window.
+
+        client/src/main/windows.ts:
+        - createMainWindow(): BrowserWindow config (width: 1200, height: 800, webPreferences: { preload, contextIsolation: true, nodeIntegration: false }).
+
+        client/src/main/ipc.ts:
+        - IPC handlers for safeStorage operations:
+          - "auth:store-tokens": encrypt and store access + refresh tokens via safeStorage.
+          - "auth:get-tokens": decrypt and return tokens.
+          - "auth:clear-tokens": remove stored tokens.
+        - Path traversal protection on any file-write IPC handlers.
+
+        client/src/main/local-store.ts:
+        - electron-store instance with defaults per spec (obsidian.vaultPath, workspace.*, theme.*).
+        - ESM import pattern.
+
+        client/src/main/preload.ts:
+        - contextBridge.exposeInMainWorld("electronAPI", { ... }) for all IPC operations.
+      </description>
+      <files>
+        client/src/main/main.ts,
+        client/src/main/windows.ts,
+        client/src/main/ipc.ts,
+        client/src/main/local-store.ts,
+        client/src/main/preload.ts
+      </files>
+      <verification>
+        No localStorage.setItem or sessionStorage.setItem in any file.
+        safeStorage used for token encryption.
+        contextIsolation: true and nodeIntegration: false in BrowserWindow config.
+        electron-store defaults match spec.
+        No `: any` in TypeScript.
+      </verification>
+      <done-condition>
+        Electron main process creates a BrowserWindow with security best practices (contextIsolation, no nodeIntegration). safeStorage encrypts JWT tokens. electron-store manages non-secret settings. IPC handlers exposed via contextBridge preload. Theme applied before window renders.
+      </done-condition>
+      <token-estimate>15000</token-estimate>
+      <complexity score="13" tier="STANDARD" confidence="85" model="sonnet">
+        <dimension name="scope"           score="2" rationale="5 files" />
+        <dimension name="integration"     score="2" rationale="Electron APIs: safeStorage, IPC, contextBridge" />
+        <dimension name="infrastructure"  score="2" rationale="Electron main process architecture" />
+        <dimension name="knowledge"       score="2" rationale="Electron security patterns, safeStorage" />
+        <dimension name="risk"            score="2" rationale="Security: token storage, context isolation" />
+        <dimension name="testing"         score="2" rationale="Manual launch verification" />
+        <dimension name="decomposability" score="1" rationale="Files are modular" />
+        <multiplier type="security-sensitive" factor="1.2" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-8-3">
+      <description>
+        Create API client singleton and typed wrapper functions.
+
+        client/src/renderer/api/client.ts:
+        - ApiClient class with baseUrl, accessToken management.
+        - fetch&lt;T&gt;(path, options): generic typed fetch with auth header injection.
+        - 401 handling: attempt token refresh, retry once. If refresh fails, redirect to login.
+        - ApiError class with status and message.
+        - Export singleton: apiClient.
+
+        client/src/renderer/api/auth.ts:
+        - Typed wrapper functions for auth endpoints:
+          - api.auth.login(username, password) -> TokenResponse
+          - api.auth.register(username, email, password) -> TokenResponse
+          - api.auth.me() -> UserResponse
+          - api.auth.updateProfile(updates) -> UserResponse
+          - api.auth.changePassword(currentPassword, newPassword) -> void
+          - api.auth.refresh(refreshToken) -> TokenResponse
+          - api.auth.sessions() -> SessionResponse[]
+          - api.auth.revokeSession(sessionId) -> void
+        - admin.createUser, admin.deleteUser, admin.listUsers, admin.resetPassword, admin.updateUser
+
+        client/src/renderer/api/index.ts:
+        - Barrel export: re-export api object and apiClient.
+
+        client/src/renderer/api/generated/ — placeholder .gitkeep (codegen runs after backend is up).
+
+        Platform abstraction:
+        client/src/platform/types.ts: PlatformAPI interface.
+        client/src/platform/electron.ts: IPC-based implementations.
+        client/src/platform/web.ts: browser-safe fallbacks/no-ops.
+      </description>
+      <files>
+        client/src/renderer/api/client.ts,
+        client/src/renderer/api/auth.ts,
+        client/src/renderer/api/index.ts,
+        client/src/renderer/api/generated/.gitkeep,
+        client/src/platform/types.ts,
+        client/src/platform/electron.ts,
+        client/src/platform/web.ts
+        <!-- NOTE: platform/ is at client/src/platform/ (NOT client/src/renderer/platform/).
+             The Vite alias in vite.config.ts must resolve 'platform' → client/src/platform/ per electron-patterns.md. -->
+      </files>
+      <verification>
+        No `: any` in any TypeScript file.
+        apiClient exported as singleton from client.ts.
+        All auth wrapper functions defined.
+        No localStorage/sessionStorage usage.
+        Platform abstraction is at client/src/platform/ (NOT client/src/renderer/platform/). `ls client/src/platform/types.ts` succeeds.
+        `grep "platform" client/vite.config.ts` confirms alias points to client/src/platform/ not renderer.
+        Components only import from @/api (barrel), never from @/api/generated.
+      </verification>
+      <done-condition>
+        API client singleton handles auth headers, 401 refresh, and typed error handling. Typed wrapper functions exist for all Phase 1 auth + admin endpoints. Platform abstraction provides Electron (IPC) and web (fallback) implementations. No `any` types. No web storage.
+      </done-condition>
+      <token-estimate>15000</token-estimate>
+      <complexity score="13" tier="STANDARD" confidence="85" model="sonnet">
+        <dimension name="scope"           score="2" rationale="7 files" />
+        <dimension name="integration"     score="2" rationale="fetch + IPC + auth flow" />
+        <dimension name="infrastructure"  score="1" rationale="Client-side architecture" />
+        <dimension name="knowledge"       score="2" rationale="Token refresh patterns, platform abstraction" />
+        <dimension name="risk"            score="2" rationale="Wrong refresh logic = broken auth UX" />
+        <dimension name="testing"         score="2" rationale="Manual: login → refresh → retry" />
+        <dimension name="decomposability" score="2" rationale="Client depends on platform, auth depends on client" />
+        <integration-hints worktree="false" context-budget="8192" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-8-4">
+      <description>
+        Create the Login page at full design spec fidelity per ui-spec.md section 6.1.
+
+        client/src/renderer/views/LoginView.tsx:
+        - Full-screen split layout: left half (dark branding), right half (white form).
+        - Left half (bg-[#0a0a0a] text-white):
+          - Ambient radial gradients (secondary/20 top-left, blue-500/10 bottom-right, blur-[120px]).
+          - Logo + wordmark.
+          - Headline: "Your Intelligence, Amplified." (secondary accent on last word).
+          - Three feature bullets with icon + title + description.
+          - Footer: copyright, Privacy Policy, Terms of Service links.
+        - Right half (bg-white):
+          - Standard login: heading "Welcome back", sub "Please enter your details to sign in."
+          - Email field (Mail icon prefix, bg-black/5 rounded-xl).
+          - Password field (Lock icon prefix) + "Forgot?" link.
+          - Submit button (bg-black text-white rounded-xl + ArrowRight icon with hover translate).
+        - First-run variant (triggered by setup_required:true from GET /health):
+          - Heading changes to "Create Admin Account".
+          - Fields: username, email, password, confirm password. No "Forgot?" link.
+        - Forced password change overlay:
+          - Triggered by must_change_password:true in login response.
+          - Heading: "Change Your Password", sub: "Your admin has required a password change."
+          - New password + confirm password fields. "Set New Password" button.
+          - Blocks all navigation until changed.
+        - Animation: motion/react — form container scale 0.95->1, opacity 0->1. Feature bullets stagger.
+
+        CSS: Use CSS custom properties from design system spec (--sc-secondary, --sc-font-headline, etc.).
+        Icons: Lucide React (Mail, Lock, ArrowRight).
+        Import from motion/react (NOT framer-motion).
+      </description>
+      <files>
+        client/src/renderer/views/LoginView.tsx,
+        client/src/renderer/styles/tokens.css,
+        client/src/renderer/styles/semantic.css
+      </files>
+      <verification>
+        LoginView.tsx renders split layout with dark left and white right.
+        First-run variant shows "Create Admin Account" when setup_required=true.
+        Forced password change overlay renders when must_change_password=true.
+        Uses motion/react for animations (not framer-motion): `grep "from 'motion/react'" client/src/renderer/views/LoginView.tsx` returns a match.
+        Uses Lucide React icons (Mail, Lock, ArrowRight): `grep -E "Mail|Lock|ArrowRight" client/src/renderer/views/LoginView.tsx` returns matches.
+        Uses --sc-* CSS custom properties: `grep "\-\-sc-secondary" client/src/renderer/styles/tokens.css` returns a match.
+        `grep "framer-motion" client/src/renderer/views/LoginView.tsx` returns no matches (framer-motion must NOT be imported directly).
+        No `: any` in TypeScript: `grep ": any" client/src/renderer/views/LoginView.tsx` returns no matches.
+        No localStorage/sessionStorage: `grep "localStorage\|sessionStorage" client/src/renderer/views/LoginView.tsx` returns no matches.
+        File is PascalCase.tsx: `ls client/src/renderer/views/LoginView.tsx` succeeds (not LoginView/index.tsx).
+      </verification>
+      <done-condition>
+        Login page matches ui-spec.md section 6.1: split layout, dark branding panel, white form, first-run variant (admin bootstrap), forced password change overlay. Animations work via motion/react. All three form states (login, register, change-password) functional and wired to API client.
+      </done-condition>
+      <token-estimate>20000</token-estimate>
+      <complexity score="14" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope"           score="2" rationale="3 files, complex component with 3 states" />
+        <dimension name="integration"     score="2" rationale="API client + health check + motion/react" />
+        <dimension name="infrastructure"  score="1" rationale="CSS + component, no infra" />
+        <dimension name="knowledge"       score="2" rationale="Design spec translation, CSS custom properties" />
+        <dimension name="risk"            score="2" rationale="Login is first-touch UX" />
+        <dimension name="testing"         score="3" rationale="3 visual states, animations, manual walkthrough" />
+        <dimension name="decomposability" score="2" rationale="3 form variants in one component" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="task" />
+      </complexity>
+    </task>
+
+    <task id="T-1-8-5">
+      <description>
+        Create React app shell with routing + nav rail + structural page stubs.
+
+        client/src/renderer/index.html: HTML entry point with Google Fonts import (Space Grotesk, Inter, Material Symbols).
+        client/src/renderer/main.tsx: React 18 createRoot, render App.
+        client/src/renderer/App.tsx:
+        - React Router v6 with routes:
+          - /login → LoginView
+          - / → Home (DashboardView)
+          - /workspace → WorkspaceView
+          - /customize → CustomizeView
+          - /history → ChatHistoryView
+          - /settings → SettingsView (stub)
+          - /admin → AdminView (stub)
+        - Auth guard: if not authenticated, redirect to /login.
+        - First-run detection: GET /health → setup_required → show register form on login.
+        - AuthContext: manages isAuthenticated, user, tokens state.
+
+        Structural page stubs (correct route + shell + nav rail, placeholder body):
+        - client/src/renderer/views/DashboardView.tsx: "Home" page with stat card placeholders.
+        - client/src/renderer/views/WorkspaceView.tsx: 3-pane layout shell (left sidebar placeholder, chat placeholder, editor placeholder).
+        - client/src/renderer/views/CustomizeView.tsx: "Customize" heading + tab bar placeholder.
+        - client/src/renderer/views/ChatHistoryView.tsx: "Chat History" heading + list placeholder.
+
+        Navigation rail component:
+        - client/src/renderer/components/NavRail.tsx: vertical icon nav with Lucide icons
+          (Home, MessageSquare, Folder, SlidersHorizontal, History, Settings, LayoutDashboard for admin).
+        - Active state highlighting. Routing via react-router-dom NavLink.
+
+        All component files: flat PascalCase.tsx. No ComponentName/index.tsx pattern.
+      </description>
+      <files>
+        client/src/renderer/index.html,
+        client/src/renderer/main.tsx,
+        client/src/renderer/App.tsx,
+        client/src/renderer/views/DashboardView.tsx,
+        client/src/renderer/views/WorkspaceView.tsx,
+        client/src/renderer/views/CustomizeView.tsx,
+        client/src/renderer/views/ChatHistoryView.tsx,
+        client/src/renderer/components/NavRail.tsx
+      </files>
+      <verification>
+        App renders with React Router. All 7 routes accessible.
+        Nav rail appears on authenticated pages with correct icons.
+        Unauthenticated users redirected to /login.
+        All view files are PascalCase.tsx (no index.tsx pattern).
+        No `: any` in TypeScript. No localStorage/sessionStorage.
+        Google Fonts loaded in index.html.
+        AuthContext provides isAuthenticated and user state.
+      </verification>
+      <done-condition>
+        Electron app launches, shows login page. After login, nav rail appears with 7 routes. Each page stub renders correct heading and placeholder content. Auth guard redirects to /login when not authenticated. First-run detection works via /health. All files follow PascalCase.tsx naming.
+      </done-condition>
+      <token-estimate>18000</token-estimate>
+      <complexity score="13" tier="STANDARD" confidence="80" model="sonnet">
+        <dimension name="scope"           score="3" rationale="8 files, app shell + routing + nav + stubs" />
+        <dimension name="integration"     score="2" rationale="React Router + AuthContext + API client" />
+        <dimension name="infrastructure"  score="1" rationale="Client-side routing" />
+        <dimension name="knowledge"       score="1" rationale="Standard React Router patterns" />
+        <dimension name="risk"            score="2" rationale="Routing wrong = broken navigation" />
+        <dimension name="testing"         score="2" rationale="Manual: navigate all routes" />
+        <dimension name="decomposability" score="2" rationale="Stubs independent, but shell ties them" />
+        <integration-hints worktree="false" context-budget="12288" github-artifact="task" />
+      </complexity>
+    </task>
+  </tasks>
+  <dependencies>PLAN-1-8 depends on PLAN-1-1 (needs monorepo structure) and PLAN-1-4 (needs backend auth API running for login integration)</dependencies>
+  <!-- Out-of-scope notes:
+       REQ-030 (Workspace UI): structural stub only in Phase 1, full 3-pane with RAG scoping in Phase 5.
+       Avatar upload (PATCH /me/avatar): 501 stub in auth API (Phase 3+).
+       Settings/admin pages: route stubs only, full implementation in Phase 6. -->
+</plan>

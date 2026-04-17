@@ -1,101 +1,73 @@
 ---
 domain: testing
 name: testing-standards
-updated: 2025-01-01
-confidence: 0.9
-tags: [testing, unit, integration, coverage, mocks, typescript]
+specId: SPEC:test-001
+updated: 2026-04-15
+confidence: 0.95
+tags: [testing, unit, integration, e2e, coverage, mocks, factory, pytest, jest, vitest, test]
+rules:
+  - type: grep_must_not_exist
+    pattern: "\\.only\\("
+    files: "tests/**/*.{ts,tsx,js,jsx,py}"
+    message: "Remove .only() — focused tests must not be committed (SPEC:test-001)"
 ---
 # Testing Standards
 
-## Rule: Test behavior, not implementation
+## Testing Pyramid
 
-Tests should verify what code does, not how it does it. Test public interfaces.
-Don't test private functions or internal state directly.
+| Level | Ratio | What to Test | Speed |
+|-------|-------|-------------|-------|
+| Unit | 70%+ | Pure functions, business logic, utilities | <10ms each |
+| Integration | ~20% | API endpoints, DB queries, service interactions | <500ms each |
+| E2E | ~10% | Critical user journeys only | <5s each |
 
-```typescript
-// ✅ Correct: test behavior
-test('login returns a JWT when credentials are valid', async () => {
-  const result = await loginUser({ email: 'test@example.com', password: 'password123' });
-  expect(result.token).toBeDefined();
-  expect(typeof result.token).toBe('string');
-});
-```
+## 7 Core Rules
 
-```typescript
-// ❌ Anti-pattern: testing implementation details
-test('login calls bcrypt.compare', async () => {
-  const spy = jest.spyOn(bcrypt, 'compare');
-  await loginUser({ email: 'test@example.com', password: 'password123' });
-  expect(spy).toHaveBeenCalled(); // brittle — breaks on refactor
-});
-```
+1. **Test behavior, not implementation.** Test public interfaces. Don't test private functions or internal state.
+2. **AAA pattern.** Every test: Arrange (setup) -> Act (execute) -> Assert (verify). One act per test.
+3. **Mock at boundaries only.** Mock external services (DB, HTTP, queues) at their entry point. Never mock internal helpers.
+4. **Test error paths explicitly.** Every function that can fail needs at least one failure test. Happy path alone is insufficient.
+5. **Use factories, not fixtures.** Factories (factory_boy, fishery) create test data programmatically. Fixtures are brittle and opaque.
+6. **Tests must be independent.** No shared mutable state. No execution order dependencies. Each test sets up and tears down its own data.
+7. **No focused tests in commits.** `.only()`, `.skip()`, `@pytest.mark.skip` must never reach the main branch.
 
----
+## Coverage Thresholds
 
-## Rule: Use the AAA pattern (Arrange-Act-Assert)
-
-Structure every test with three clear sections.
-
-```typescript
-// ✅ Correct: clear AAA structure
-test('createUser saves to database and returns the user', async () => {
-  // Arrange
-  const userData = { email: 'new@example.com', name: 'Alice', password: 'secure123' };
-
-  // Act
-  const user = await createUser(userData);
-
-  // Assert
-  expect(user.id).toBeDefined();
-  expect(user.email).toBe(userData.email);
-  expect(user.password).toBeUndefined(); // password never returned
-});
-```
-
----
-
-## Rule: Mock at the boundary, not deep inside
-
-Mock external services (databases, HTTP calls, queues) at their entry point.
-Don't mock internal helper functions.
-
-```typescript
-// ✅ Correct: mock the DB client
-jest.mock('../lib/db', () => ({
-  user: {
-    create: jest.fn().mockResolvedValue({ id: '1', email: 'test@example.com' }),
-    findUnique: jest.fn(),
-  }
-}));
-```
-
-```typescript
-// ❌ Anti-pattern: mocking internal helpers
-jest.mock('../lib/hashPassword'); // too deep, brittle
-```
-
----
-
-## Rule: Test error paths explicitly
-
-Every function that can fail must have at least one test for the failure case.
-
-```typescript
-// ✅ Correct: test the error path
-test('login throws AuthError when password is wrong', async () => {
-  await expect(
-    loginUser({ email: 'test@example.com', password: 'wrongpassword' })
-  ).rejects.toThrow('Invalid credentials');
-});
-```
-
----
-
-## Coverage Targets
-
-Maintain these minimum coverage thresholds:
 - Statements: 80%
 - Branches: 75%
 - Functions: 85%
 
-Coverage is a floor, not a ceiling. Aim for meaningful tests, not 100% coverage.
+Coverage is a floor, not a ceiling. Aim for meaningful tests, not 100% coverage of trivial code.
+
+## Test Isolation Strategies
+
+| Strategy | When | Tradeoff |
+|----------|------|----------|
+| Transaction rollback | Unit/integration, single DB | Fast, clean, but no commit-side-effect testing |
+| Truncation | Integration, multiple tables | Slower, but tests committed state |
+| Test containers | CI, external dependencies (Redis, Postgres) | Slowest, but real infrastructure |
+
+## Endpoint Test Coverage Matrix
+
+For every API endpoint, test:
+- Happy path (valid input, expected output)
+- Auth (unauthenticated -> 401, unauthorized -> 403)
+- Validation (invalid input -> 400/422 with error details)
+- Not found (missing resource -> 404)
+- Conflict (duplicate creation -> 409)
+- Side effects (DB writes, events, cache invalidation)
+
+## Anti-Patterns
+
+| # | Don't | Do Instead |
+|---|-------|------------|
+| 1 | Mock internal helpers | Mock at boundaries (DB, HTTP, queue) |
+| 2 | Test implementation details (spies on internals) | Test observable behavior |
+| 3 | Share mutable state between tests | Independent setup/teardown per test |
+| 4 | Use DB fixtures (JSON/YAML files) | Factories (factory_boy, fishery) |
+| 5 | Skip error path testing | At least one failure test per function |
+| 6 | Commit .only() / .skip() | Remove before merge |
+| 7 | Snapshot tests for logic | Use explicit assertions |
+| 8 | Test framework internals | Test your code's behavior |
+
+For stack-specific code examples, fetch `SPEC:be-ts-001` (TypeScript) or `SPEC:be-py-001` (Python).

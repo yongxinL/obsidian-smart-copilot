@@ -20,7 +20,11 @@ First user becomes admin (`GET /health` returns `setup_required: true`). Admin c
 watchdog detects create/modify/delete/rename on `.md` files. Events debounced 300ms. VaultRegistry resolves path → (user_id, namespace). IndexQueue for async processing. App-initiated writes bypass watcher (content_hash dedup). Markdown parser extracts frontmatter + wikilinks. NoteTypeClassifier infers from frontmatter, folder, tags.
 
 **REQ-006: Bulk Initial Indexing (F-IDX-02) — Must Have**
-Detect unindexed vault, begin bulk processing. Progress reported via `GET /api/v1/vault/index/progress`. Chat available before indexing completes. Target: 1000 notes < 5 minutes.
+Detect unindexed vault, begin bulk processing. Progress reported via `GET /api/v1/vault/index/progress`. Chat available before indexing completes.
+
+**Phase 1 scope (delivered now):** metadata-only pass. `bulk_index` walks the vault directory, upserts `documents` rows (content, content_hash, note_type, frontmatter), extracts wikilinks into the `wikilinks` table, and logs to `index_events`. **The `embedding` column is left NULL in Phase 1** — embeddings are a Phase 2 deliverable.
+
+**Phase 2 scope (deferred):** full pipeline with ContextEnricher + Chunker + Embedder producing populated `chunks.embedding` vectors. The performance target `1000 notes < 5 minutes` (NFR-003) applies to the **full embedding pipeline** and is verified in Phase 2's quality gate, not Phase 1.
 
 ### Phase 2 — RAG + Chat
 
