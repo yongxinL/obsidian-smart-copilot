@@ -66,7 +66,7 @@
 30M. [Assumptions, Constraints & Dependencies](#30m-assumptions-constraints--dependencies)
 30N. [Risks & Mitigations](#30n-risks--mitigations)
 30O. [Reference Codebases & Resources](#30o-reference-codebases--resources)
-30P. [AI Agent Implementation Guidance](#30p-ai-agent-implementation-guidance)
+[30P. AI Agent Implementation Guidance](#30p-ai-agent-implementation-guidance)
 31. [Glossary](#31-glossary)
 - [Appendix A — Default Skill List](#appendix-a--default-skill-list-one-line-definitions)
 - [Appendix B — Default Tool Surface](#appendix-b--default-tool-surface-22-agent-tools--30-mcp-tools)
@@ -467,7 +467,7 @@ The build order is reversed from typical: backend + MCP first, UI last. v26.05.1
 | `mcp/server.py` calls `services/`       | Phase 1   | Phase 1   | MCP and REST share the same service layer (REQ-132, REQ-132)              |
 | `vault/` before `rag/`                  | Phase 1   | Phase 2   | RAG indexes vault content; vault watcher must exist first                 |
 | `rag/queries.py` before `rag/engine.py` | Phase 2   | Phase 2   | `HybridRAGEngine` calls SQL in `queries.py`                               |
-| `skill_run` gated until `skills/` exists | Phase 2   | Phase 3   | Phase 2 MAY expose the agent surface, but `skill_run` MUST return `not_implemented` until the Phase 3 skills runtime is available |
+| `skills/` before `agent/`               | Phase 3   | Phase 2   | Agent's `skill_run` tool calls the skills runtime                         |
 | `llm/gateway.py` before everything else | Phase 1   | Phase 2+  | Embedding and LLM calls depend on the router                              |
 | `auth/middleware.py` before `services/` | Phase 1   | Phase 1   | `OperationContext` is constructed by middleware                           |
 
@@ -574,7 +574,7 @@ The build order is reversed from typical: backend + MCP first, UI last. v26.05.1
 ## 7. Data Model
 
 ### 7.1 Tables (PostgreSQL 16, all with `created_at`, `updated_at` `TIMESTAMPTZ`)
-- **REQ-300** `users(id UUID PK, username TEXT UNIQUE, email TEXT, password_hash TEXT, role TEXT CHECK in ('admin','user'), is_active BOOL, display_name TEXT NULL, title TEXT NULL, avatar_path TEXT NULL, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ, ...)`. username is immutable after creation because it is used in vault paths.
+- **REQ-300** `users(id UUID PK, username TEXT UNIQUE, email TEXT, password_hash TEXT, role TEXT CHECK in ('admin','user'), is_active BOOL, ...)`.
 - **REQ-301** `sessions(id UUID PK, user_id UUID FK, token_hash TEXT, expires_at TIMESTAMPTZ, ...)`.
 - **REQ-302** `mcp_tokens(id UUID PK, user_id UUID FK, name TEXT, token_hash TEXT, last_used_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ, ...)`.
 - **REQ-303** `provider_keys(id UUID PK, user_id UUID FK, provider TEXT, encrypted_key BYTEA, key_hint TEXT, ...)` — `encrypted_key` MUST NEVER be returned by any API. Shared (admin-provided) provider keys MAY exist in system configuration; per-request resolution order is defined in Section 24.2.
@@ -593,18 +593,19 @@ The build order is reversed from typical: backend + MCP first, UI last. v26.05.1
 - **REQ-315** `recipes(id UUID PK, namespace TEXT, user_id UUID NULL, name TEXT, version TEXT, yaml TEXT, ...)`.
 - **REQ-316** `eval_candidates(id UUID PK, user_id UUID FK, kind TEXT, query TEXT, retrieved_slugs TEXT[], ...)` — opt-in capture.
 - **REQ-360** `conversations(id UUID PK, user_id UUID FK, title TEXT, mcp_mode TEXT CHECK in ('disable','auto','manual') DEFAULT 'auto', web_search_enabled BOOL DEFAULT false, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ)`.
-- **REQ-360A** conversations MUST include `is_temporary BOOL DEFAULT false`. Temporary conversations MUST NOT be persisted beyond the active session, MUST NOT feed `memory.auto_extract`, and MUST NOT be included in Memory Dream, search history, or usage-derived personalization. Token/cost usage MAY still be recorded for billing/observability with `conversation_id NULL`.
 - **REQ-361** `messages(id UUID PK, conversation_id UUID FK, role TEXT CHECK in ('user','assistant','system'), content TEXT, citations JSONB, tokens_used INT, model TEXT, created_at TIMESTAMPTZ)`.
 - **REQ-362** `memories(id UUID PK, user_id UUID FK, content TEXT, source_conversation_id UUID FK, extracted_at TIMESTAMPTZ, archived BOOL DEFAULT false)`.
 - **REQ-363** `dream_audit_log(id UUID PK, user_id UUID FK, run_at TIMESTAMPTZ, kind TEXT, status TEXT, pages_processed INT, memories_created INT, errors JSONB)`.
-- **REQ-364** `projects(id UUID PK, user_id UUID FK, name TEXT, description TEXT NULL, include_folders TEXT[], exclude_folders TEXT[], tag_includes TEXT[], tag_excludes TEXT[], system_prompt TEXT NULL, default_model_id TEXT NULL, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ)`. API field `tags[]` maps to `tag_includes` unless `tag_excludes` is explicitly provided.
+- **REQ-364** `projects(id UUID PK, user_id UUID FK, name TEXT, folder_patterns TEXT[], tag_includes TEXT[], tag_excludes TEXT[], system_prompt TEXT, default_model TEXT, created_at TIMESTAMPTZ)`.
 - **REQ-365** `operation_log(id UUID PK, user_id UUID FK, operation TEXT, target_kind TEXT, target_id UUID, payload JSONB, created_at TIMESTAMPTZ)`.
 - **REQ-366** `llm_usage(id UUID PK, user_id UUID FK, provider TEXT, model TEXT, input_tokens INT, output_tokens INT, cost_usd REAL, conversation_id UUID FK, created_at TIMESTAMPTZ)`.
 - **REQ-367** `index_events(id UUID PK, user_id UUID FK, event_type TEXT, page_slug TEXT, details JSONB, created_at TIMESTAMPTZ)`.
 - **REQ-368** `user_settings(id UUID PK, user_id UUID FK, settings JSONB, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ)`.
 - **REQ-369** `system_config(id UUID PK, key TEXT UNIQUE, value JSONB, updated_at TIMESTAMPTZ)`.
 - **REQ-370** `mcp_servers(id UUID PK, name TEXT UNIQUE, type TEXT CHECK in ('stdio','streamable_http'), command TEXT, args TEXT[], env JSONB, url TEXT, auth_key_provider TEXT, always_allow TEXT[], enabled BOOL DEFAULT true, last_connected_at TIMESTAMPTZ, last_error TEXT)`. Admin-only RLS.
-- **REQ-371** `attachments(id UUID PK, vault_id UUID FK, page_id UUID FK NULL, path TEXT, original_filename TEXT, stored_filename TEXT, mime_type TEXT, size_bytes BIGINT, content_hash TEXT, storage_hash TEXT, created_by UUID FK, created_at TIMESTAMPTZ, deleted_at TIMESTAMPTZ NULL)`. Attachments MUST be stored under the owning vault's `.attachments/` directory using generated safe filenames, and MUST be scoped by RLS through the parent vault.
+- **REQ-372** `golden_query_suites(id UUID PK, user_id UUID FK NULL, name TEXT, description TEXT NULL, scope TEXT CHECK in ('system','user','project'), project_id UUID NULL, version TEXT, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ)`. System suites are admin-managed; user/project suites are RLS-scoped.
+- **REQ-373** `golden_queries(id UUID PK, suite_id UUID FK, query TEXT, expected_slugs TEXT[], expected_answer_contains TEXT[], expected_link_types TEXT[], tags TEXT[], difficulty TEXT CHECK in ('easy','medium','hard') DEFAULT 'medium', notes TEXT NULL, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ)`. Golden queries are used for retrieval regression tests and MUST NOT be included in normal RAG context unless explicitly ingested as pages.
+- **REQ-374** `golden_query_runs(id UUID PK, suite_id UUID FK, user_id UUID FK NULL, run_at TIMESTAMPTZ, config JSONB, metrics JSONB, result JSONB, status TEXT CHECK in ('running','passed','failed','error'))`. Runs MUST record Precision@K, Recall@K, MRR, nDCG@K, top-1 stability, citation coverage, and p95 latency where applicable.
 
 ### 7.2 Indexes
 - **REQ-320** HNSW index on `chunks.embedding` with `vector_cosine_ops`.
@@ -682,7 +683,7 @@ The build order is reversed from typical: backend + MCP first, UI last. v26.05.1
 - **REQ-524** A documented set of "protected" tools (e.g., `jobs.submit_shell`, `vault.delete`, `system.exec`) MUST be blocked for `remote=true` and only permitted for CLI/operator callers.
 
 ### 9.4 Tool surface (≥ 30 MCP tools, mirroring the REST API)
-The MCP tool surface MUST include at minimum: `brain.search`, `brain.query`, `brain.get`, `brain.put`, `brain.append_timeline`, `brain.update_compiled_truth`, `brain.list`, `brain.delete`, `brain.history`, `brain.diff`, `brain.revert`, `brain.tags.list`, `brain.tags.add`, `brain.tags.remove`, `brain.backlinks`, `brain.graph.traverse`, `brain.entity.get`, `brain.entity.merge`, `brain.entity.alias.add`, `brain.stats`, `brain.health`, `capability_discovery`, `ingest.idea`, `ingest.media`, `ingest.meeting`, `enrich.entity`, `recipe.run`, `skill.list`, `skill.get`, `skill.run`, `jobs.submit`, `jobs.status`, `jobs.cancel`, `maintain.run`, `maintain.report`. Each MUST be defined per Section 10's service contract.
+The MCP tool surface MUST include at minimum: `brain.search`, `brain.query`, `brain.get`, `brain.put`, `brain.append_timeline`, `brain.update_compiled_truth`, `brain.list`, `brain.delete`, `brain.history`, `brain.diff`, `brain.revert`, `brain.tags.list`, `brain.tags.add`, `brain.tags.remove`, `brain.backlinks`, `brain.graph.traverse`, `brain.entity.get`, `brain.entity.merge`, `brain.entity.alias.add`, `brain.stats`, `brain.health`, `apability_discovery`, `ingest.idea`, `ingest.media`, `ingest.meeting`, `enrich.entity`, `recipe.run`, `skill.list`, `skill.get`, `skill.run`, `jobs.submit`, `jobs.status`, `jobs.cancel`, `maintain.run`, `maintain.report`. Each MUST be defined per Section 10's service contract.
 
 - **REQ-530** Each tool MUST have a JSON schema for inputs and outputs.
 - **REQ-531** Each tool MUST be testable via an integration test that calls the underlying service directly with a constructed `OperationContext`.
@@ -698,17 +699,17 @@ The MCP tool surface MUST include at minimum: `brain.search`, `brain.query`, `br
 - **REQ-602** All REST responses MUST be Pydantic models. `encrypted_key` MUST NOT appear in any response schema.
 
 ### 10.2 WebSocket
-- **REQ-610** A WebSocket endpoint MUST be exposed at `/api/v1/ws` and MUST stream: indexing progress, job status updates, ingestion progress, maintenance reports, query streaming tokens. `/ws` MAY exist only as a backward-compatible alias and MUST NOT be documented as the primary endpoint.
+- **REQ-610** A `/ws` endpoint MUST stream: indexing progress, job status updates, ingestion progress, maintenance reports, query streaming tokens.
 - **REQ-611** WebSocket auth MUST use the same session or MCP-token model.
 
 ### 10.3 Errors
-- **REQ-620** Errors MUST follow the canonical envelope `{"error": {"code": "validation_error", "message": "Human-readable error message", "details": {}}}`. `details` MAY be omitted when empty. Stable lowercase error codes MUST include: `unauthorized`, `forbidden`, `not_found`, `validation_error`, `conflict`, `rate_limited`, `service_unavailable`, `internal_error`, `admin_reauth_required`, `fetch_blocked`, `fetch_disallowed`, `capability_missing`, `schema_incompatible`, `provider_error`, `missing_provider_key`, `mode_disabled`, and `restore_verification_failed`.
+- **REQ-620** Errors MUST follow `{error: {code, message, details?}}` with stable codes: `unauthorized`, `forbidden`, `not_found`, `validation_error`, `conflict`, `rate_limited`, `service_unavailable`, `internal_error`.
 
 ### 10.4 Capability Discovery
 - **REQ-630** The system MUST expose a capability discovery interface that allows clients to determine supported features and limits at runtime.
 - **REQ-631** Capability discovery MUST be available via:
   - REST: `GET /api/v1/capabilities`
-  - MCP tool: `ccapability_discovery`
+  - MCP tool: `capability_discovery`
 - **REQ-632** The capability response MUST include at minimum:
   - supported transports (`stdio`, `http`)
   - clipboard capture availability
@@ -747,6 +748,7 @@ A `smartcopilot` binary MUST be available inside the container.
 - **REQ-722** `smartcopilot check-resolvable` — validates skills tree for reachability, MECE, DRY, gap detection, orphans.
 - **REQ-723** `smartcopilot smoke-test` — drop-in user tests at `/etc/smartcopilot/smoke-tests.d/*.sh`.
 - **REQ-724** All CLI commands MUST support `--json` output for agent consumption and MUST exit non-zero on failure.
+- **REQ-725** `smartcopilot inbox list|promote|archive|bulk` MUST support inbox triage operations defined in Section 30E.5 and MUST support `--json` output.
 
 ---
 
@@ -843,12 +845,6 @@ Every CLI admin command MUST have a corresponding admin REST endpoint, all under
 - **REQ-1042** Only allowlisted MIME types MAY be attached. Disallowed types MUST be rejected early.
 - **REQ-1043** Text-bearing attachments (PDF, image via OCR) MAY have extracted text indexed, but extracted text MUST NOT be embedded into the page markdown unless explicitly requested.
 - **REQ-1044** Attachments MUST be content-hashed; duplicate attachments MAY be deduplicated internally but MUST preserve logical references.
-- **REQ-1045** The watcher/indexer MUST ignore reserved user-profile files such as `.avatar.png` unless explicitly handled by the profile service.
-- **REQ-1046** Attachment uploads MUST validate extension allowlist, MIME type, and file signature where practical; the client-supplied `Content-Type` header MUST NOT be trusted as the sole validation signal.
-- **REQ-1047** Attachment storage filenames MUST be generated by the server and MUST NOT directly reuse user-supplied filenames. Original filenames MAY be stored as metadata after validation and length limiting.
-- **REQ-1048** Archive formats, if ever supported, MUST enforce decompressed-size, file-count, recursion-depth, and timeout limits to prevent archive bombs.
-- **REQ-1049** PDF, DOCX, image, OCR, and media parsers MUST run with size/time limits and structured failure handling. Optional antivirus/CDR hooks MAY be configured by operators.
-- **REQ-1050** Server-side image processing MUST strip EXIF metadata for images accepted through upload or clipboard flows unless explicitly disabled by an admin policy.
 
 ---
 
@@ -900,16 +896,21 @@ Every CLI admin command MUST have a corresponding admin REST endpoint, all under
 - **REQ-1208** Stale alert annotation: if the page's compiled-truth `updated` is older than the latest timeline entry, mark the result `stale=true`.
 - **REQ-1209** Final result MUST include for each hit: `slug`, `title`, `kind`, `excerpt`, `score`, `signals` (which retrievers contributed), `stale`.
 - **REQ-1210** Search responses SHOULD include an optional `trace` object when `debug_trace=true`, containing query variants, per-retriever ranks, RRF score contributions, boosts applied, dedup decisions, and final citation mapping. The trace MUST be omitted by default and MUST NOT expose content outside the caller's RLS scope.
+- **REQ-1211** When `debug_trace=true`, the `trace` object MUST use a stable schema with these top-level fields: `query_id`, `original_query`, `expanded_queries[]`, `intent`, `retrievers[]`, `candidates[]`, `fusion`, `dedup`, `boosts[]`, `final_hits[]`, `citations[]`, `timings_ms`, and `warnings[]`.
+- **REQ-1212** `trace.retrievers[]` MUST include one entry per retrieval source (`vector`, `bm25`, `graph`, and optional `reranker`) with `name`, `enabled`, `candidate_count`, `top_k`, `latency_ms`, and `error` fields.
+- **REQ-1213** `trace.candidates[]` MUST include per-candidate `page_id`, `slug`, `chunk_id`, `chunk_kind`, `retriever_ranks`, `rrf_contributions`, `pre_boost_score`, `boosts_applied`, `final_score`, and `excluded_reason` when removed by dedup or filtering.
+- **REQ-1214** Retrieval trace output MUST be available through REST search endpoints and MAY be exposed through MCP `brain.search` when explicitly requested. It MUST be treated as diagnostic metadata, not as user-facing answer text.
 
 ### 16.2 Synthesis
 - **REQ-1220** The agent's `query` tool MUST synthesize an answer ONLY from retrieved chunks. If retrieved evidence is insufficient, it MUST respond with `"the brain doesn't have info on X"` and not hallucinate.
 - **REQ-1221** Every synthesized answer MUST include citations as `[slug]` references resolvable to retrieved hits.
 
 ### 16.3 Chunking
-- **REQ-1230** Chunking MUST follow the normative configuration in Section 30G and `/config/settings.yaml`. Default chunk size is 512 tokens, default overlap is 64 tokens, minimum chunk size is 50 tokens, and pages at or below `single_chunk_threshold` 600 tokens MUST be embedded as a single chunk. The delimiter hierarchy and markdown-aware separator behaviour are defined in Section 30G.2.
+- **REQ-1230** Chunking MUST use a 5-level delimiter hierarchy: paragraphs > lines > sentences > clauses > whitespace. Default chunk size 800 tokens, overlap 100.
 - **REQ-1231** Chunks MUST be tagged by `kind` (`compiled_truth`, `timeline`, `frontmatter`).
 - **REQ-1232** Chunking MUST be idempotent (same input → same chunks → same content hashes).
-#### 16.4 Retrieval Modes and Optional Reranking
+
+### 16.4 Retrieval Modes and Optional Reranking
 - **REQ-1240** The system MUST support the default `focused_retrieval` mode, where RAG injects only the highest-ranked chunks selected by the hybrid retrieval pipeline.
 - **REQ-1241** The system MAY support `full_context` attachments for selected short pages/documents in a conversation. Full-context attachments bypass chunk retrieval and are injected subject to the configured context budget.
 - **REQ-1242** Full-context attachments MUST be explicitly selected by the user or client and MUST NOT be auto-applied to large documents.
@@ -1101,8 +1102,6 @@ Hermes' skills are markdown procedural-memory files (compatible with the `agents
 ### 18A.5 OAuth 2.1 roadmap (forward compatibility)
 - **REQ-1504A** Smart Copilot MUST architecturally accommodate OAuth 2.1 dynamic client registration so future MCP clients requiring OAuth can be onboarded without breaking changes; bearer-token auth remains primary in v26.05.1.
 - **REQ-1504B** A documented stub `POST /mcp/oauth/register` SHOULD be present and return a 501 with a stable error code until OAuth is implemented.
-- **REQ-1504C** Capability discovery MUST declare the supported MCP protocol version range and active transport features. v1.0 targets compatibility with MCP 2025-03-26 Streamable HTTP behaviour, while the implementation SHOULD be structured to adopt later MCP features without breaking tool schemas.
-- **REQ-1504D** Smart Copilot SHOULD track MCP 2025-06-18+ compatibility items where safe, including structured tool output, OAuth Resource Server metadata, Resource Indicators (RFC 8707), and elicitation-style user input flows. JSON-RPC batching MUST NOT be required for correctness because MCP version support differs across clients.
 
 ### 18A.6 Documentation generation
 - **REQ-1505A** The build pipeline MUST regenerate `docs/clients/<client>/README.md` and `docs/clients/<client>/config.example.*` on every PR that changes the MCP tool surface.
@@ -1364,8 +1363,6 @@ The backup and restore system does **not** include:
   - User-owned project definitions and skill overrides.
 - **REQ-2095** Encrypted provider keys MAY be included but MUST remain encrypted and MUST NOT be decrypted during export.
 - **REQ-2096** User export archives MUST NOT include data belonging to other users or shared-vault content unless explicitly owned by the exporting user.
-- **REQ-2097** Backup and restore jobs MUST write `/config/backup-status.json` containing `last_success_at`, `last_failure_at`, `last_archive_path`, `last_verify_status`, `duration_seconds`, `tool_version`, and `error_code`. Admin health endpoints MAY read this file to report backup readiness.
-- **REQ-2098** Backup archive encryption MAY be supported with a backup-specific passphrase or key. Backup encryption keys MUST be separate from `SMARTCOPILOT_FERNET_KEY`; the system MUST NOT attempt to escrow or recover lost backup keys.
 
 ---
 
@@ -1405,10 +1402,6 @@ The backup and restore system does **not** include:
 - **REQ-2642** Retention values MUST be admin-configurable.
 - **REQ-2643** Expired records MUST be deleted or irreversibly anonymized.
 - **REQ-2644** User-initiated deletion of derived data MUST NOT violate audit-log integrity requirements.
-- **REQ-2645** Admin user deletion MUST define a deterministic deletion plan before execution, including private vault files, conversations, messages, memories, MCP tokens, provider keys, settings, projects, jobs, and derived indexes.
-- **REQ-2646** Deleting a user MUST hard-delete or archive that user's private vault files according to an explicit admin choice; the default is archive-to-backup-before-delete.
-- **REQ-2647** Shared-vault pages authored by a deleted user MUST NOT be deleted automatically. Their author metadata MAY be anonymized while preserving audit integrity.
-- **REQ-2648** Audit records required for security/accountability MUST be retained or irreversibly anonymized according to the configured retention policy; user deletion MUST NOT silently remove audit evidence for admin/security actions.
 
 ### 26.5 Degraded and Read-Only Modes
 
@@ -1423,9 +1416,6 @@ The backup and restore system does **not** include:
 ---
 
 ## 27. Security and Trust Boundary
-
-#### 27.0 Threat Model
-Smart Copilot's v1 threat model MUST explicitly cover: remote MCP client abuse, malicious or compromised external MCP servers, prompt injection from web/MCP/tool outputs, SSRF through URL fetch/web search/repo ingest/avatar/webhook flows, RLS bypass or session GUC leakage, vault path traversal and symlink escape, malicious file upload or parser exploitation, provider-key leakage, backup archive leakage, and destructive admin actions from stolen sessions. Security requirements in this section, Sections 8, 19, 24A, 26, and 30F are mapped to these threats.
 
 - **REQ-2300** Every service entry point MUST construct an `OperationContext` (Section 9.3) and pass it down to services; services MUST refuse to run without one.
 - **REQ-2301** `remote=true` callers MUST NOT be able to: execute arbitrary shell, write outside the user's vault, read other users' vaults, install or modify system skills, rotate keys, create users, or modify RLS-bypassing rows.
@@ -1448,6 +1438,15 @@ Smart Copilot's v1 threat model MUST explicitly cover: remote MCP client abuse, 
 - **REQ-2406** Drift tests MUST assert that every MCP tool has a corresponding REST endpoint and vice versa, and that their service-layer call signatures match.
 - **REQ-2407** Skill validation tests MUST assert that `check-resolvable` passes on every PR.
 - **REQ-2408** Phase acceptance criteria from Section 6 MUST each have at least one e2e test.
+#### 28.1 Golden-Query Evaluation Fixtures
+- **REQ-2410** The repository MUST include a golden-query fixture format at `server/app/tests/fixtures/golden_queries/*.yaml` for repeatable RAG and graph retrieval regression testing.
+- **REQ-2411** Each golden-query fixture MUST define: `suite_id`, `name`, `version`, `description`, `scope`, `queries[]`, and optional `global_filters`.
+- **REQ-2412** Each `queries[]` item MUST include: `id`, `query`, `expected_slugs[]`, optional `expected_answer_contains[]`, optional `expected_link_types[]`, `tags[]`, `difficulty`, and `notes`.
+- **REQ-2413** The command `smartcopilot eval rag --suite <suite_id> [--json]` MUST run a suite against the current retrieval configuration and emit Precision@5, Recall@5, MRR, nDCG@5, citation coverage, top-1 stability, p95 latency, and a pass/fail summary.
+- **REQ-2414** CI MUST run at least one small golden-query suite on every PR that changes `rag/`, `vault/link_extractor.py`, `vault/indexer.py`, `llm/router.py`, or search SQL in `rag/queries.py`.
+- **REQ-2415** Golden-query failures MUST include retrieval trace IDs or inline debug traces sufficient to explain which expected slugs were missed and why.
+- **REQ-2416** Golden-query fixtures MUST be synthetic or user-approved test data; private user vault content MUST NOT be committed into repository fixtures.
+- **REQ-2417** Admin REST MAY expose golden-query suite run endpoints in Phase 6+, but CLI support is mandatory before a retrieval change is considered production-ready.
 
 ---
 
@@ -1467,7 +1466,6 @@ Smart Copilot's v1 threat model MUST explicitly cover: remote MCP client abuse, 
 - **REQ-2521** Alembic migrations MUST run automatically on boot using synchronous psycopg2 in `env.py`; the runtime MUST then connect via asyncpg.
 - **REQ-2522** The default vault layout MUST be created (`/vaults/private/`, `/vaults/shared/`).
 - **REQ-2523** The default skill pack and default recipes MUST be installed into the system namespace on first boot.
-- **REQ-2524** First-admin creation MUST require the one-time bootstrap token. The token MAY be supplied via CLI (`smartcopilot bootstrap --token`) or via `POST /api/v1/auth/register` when `/health` reports `setup_required=true`. Registration without a valid bootstrap token MUST be rejected, and bootstrap registration MUST be disabled after the first admin exists unless `auth.allow_registration=true` explicitly enables normal registration.
 
 ### 29.4 Upgrades
 - **REQ-2530** Upgrades MUST run all pending migrations on container start; failed migrations MUST abort the boot.
@@ -1532,10 +1530,12 @@ Smart Copilot's v1 threat model MUST explicitly cover: remote MCP client abuse, 
 | POST   | `/api/v1/conversations/{id}/regenerate` | JWT  | Delete last assistant message, re-run                                                                                          |
 | POST   | `/api/v1/conversations/{id}/export`     | JWT  | Export to vault as markdown. Phase 8 (Phase 2 endpoint stub may return 501).                                                   |
 
-Additional chat/conversation requirements:
-- **REQ-2766** `POST /api/v1/conversations/{id}/fork` SHOULD create a new conversation branch copied from the selected message boundary, preserving citations and message provenance.
-- **REQ-2767** `POST /api/v1/conversations/import` MAY import conversations from supported formats (`chatgpt_json`, `markdown`, `smartcopilot_json`) and MUST mark imported content provenance in metadata.
-- **REQ-2768** Conversation create/update APIs MUST support `is_temporary=true` as defined in REQ-360A.
+#### 30A.3.1 Full-Context Attachment Contract
+- **REQ-2769** `POST /api/v1/chat/completions` MAY accept `full_context_attachments[]`, where each item contains `kind` (`page`, `attachment`, `conversation_export`, or `raw_text`), `slug` or `id`, optional `max_tokens`, optional `quote_mode`, and optional `reason`.
+- **REQ-2770** Full-context attachments MUST be resolved under the caller's RLS scope and MUST respect `rag.full_context.max_tokens_per_item` and `rag.full_context.max_total_tokens`.
+- **REQ-2771** When a full-context item exceeds the configured budget, the server MUST either reject it with `context_budget_exceeded` or downgrade it to focused retrieval according to `rag.full_context.overflow_policy`.
+- **REQ-2772** SSE `citations` events MUST indicate whether a source entered the answer through focused retrieval, full-context attachment, or both.
+- **REQ-2773** Capability discovery MUST report full-context support, maximum item/total token budgets, supported attachment kinds, and overflow policy.
 
 ### 30A.4 Search (3 endpoints — Phase 2)
 
@@ -1730,11 +1730,9 @@ When `setup_required: true`, the Phase 8 client renders the "Create Admin Accoun
 
 ### 30A.16 Error response schema (all endpoints)
 
-All endpoints MUST use the canonical Section 10.3 envelope:
 ```json
-{ "error": { "code": "validation_error", "message": "Human-readable error message", "details": {} } }
+{ "detail": "Human-readable error message", "code": "MACHINE_READABLE_CODE" }
 ```
-The legacy `{detail, code}` shape MUST NOT be used in v1 implementations.
 
 | HTTP | Code               | Usage                                                     |
 | ---- | ------------------ | --------------------------------------------------------- |
@@ -1965,6 +1963,9 @@ The advisory-lock approach extends to all scheduled tasks (reconciliation, syste
 - **REQ-2784** Users MUST be able to inspect, edit, archive, restore, and export their own memories through API/CLI and, in Phase 8, the memory UI.
 - **REQ-2785** Temporary conversations, admin reauthentication flows, provider-key entry flows, and other security-sensitive interactions MUST NOT be used as sources for memory auto-extraction.
 - **REQ-2786** Memory extraction SHOULD avoid storing secrets, authentication tokens, provider keys, or sensitive one-time values; detected secrets MUST be redacted before persistence.
+- **REQ-2787** The system MUST expose memory consent state through `GET /api/v1/memories/consent`, returning effective global policy, user override, auto-extract status, excluded categories, and last-updated timestamp.
+- **REQ-2788** The system MUST allow users to update their own memory consent through `PUT /api/v1/memories/consent`, including `auto_extract_enabled`, `excluded_categories[]`, and `allow_dream_consolidation`.
+- **REQ-2789** If memory auto-extraction is disabled for a user, the system MUST NOT create new `memories` rows from that user's conversations, but manual memory creation MAY remain available.
 
 ---
 
@@ -2006,6 +2007,15 @@ The Zettelkasten model in Smart Copilot rests on three page types — fleeting, 
 - **REQ-2795** Files MUST NEVER be auto-deleted — only explicit user action or the `maintain_run(kind=cleanup_orphans)` tool removes files permanently.
 
 ---
+
+#### 30E.5 Inbox Triage Workflow
+- **REQ-2860** The system MUST provide an inbox triage workflow for fleeting notes and raw captures stored under configured inbox/fleeting folders or tagged with configured fleeting tags.
+- **REQ-2861** `GET /api/v1/vault/inbox` MUST list triage candidates with slug, title, note_type, created_at, updated_at, source folder, tags, word_count, linked_entity_count, suggested_action, and stale/expiry status.
+- **REQ-2862** `POST /api/v1/vault/inbox/{slug}/promote` MUST promote a fleeting note to `note_type=permanent` or `note_type=literature`, move it to the configured destination folder, update frontmatter, preserve backlinks, re-index content, and write an operation_log entry for undo.
+- **REQ-2863** `POST /api/v1/vault/inbox/{slug}/archive` MUST move a fleeting note to the configured archive folder, set `note_type=archived_fleeting`, remove it from RAG indexes, and write an operation_log entry for undo.
+- **REQ-2864** `POST /api/v1/vault/inbox/bulk` MAY apply promote/archive/snooze actions to multiple inbox items, but MUST require confirmation when more than 10 pages are affected.
+- **REQ-2865** Inbox triage suggestions MAY use deterministic heuristics first (age, links, word count, tags, folder) and MAY use an LLM only when the user explicitly requests suggestion generation or when a configured skill declares the cost tier.
+- **REQ-2866** The Phase 8 client SHOULD expose inbox triage as a review queue, but all inbox operations MUST be available via REST, MCP, and CLI before Phase 8.
 
 ## 30F. HTML Sanitisation Strategy
 
@@ -2227,7 +2237,11 @@ agent:
   skill_cache_ttl_seconds: 300
 
 memory:
-  auto_extract: true  # When true, on every /conversations PATCH (user sends a message) the server auto-extracts factual claims, preferences, and decisions into the memories table via the memory/extractor.py module. Gated by the user's memory.auto_extract config.
+  auto_extract: true
+  consent:
+    user_override_allowed: true
+    default_auto_extract_enabled: true
+    excluded_categories: ["secrets", "auth_tokens", "provider_keys"]  # When true, on every /conversations PATCH (user sends a message) the server auto-extracts factual claims, preferences, and decisions into the memories table via the memory/extractor.py module. Gated by the user's memory.auto_extract config.
   max_memories_per_user: 500
   max_active_memories: 200
   dream:
@@ -2419,7 +2433,6 @@ docker run -d --name smart-copilot \
   smart-copilot:latest
 
 # External PostgreSQL
-# Advanced/operator-supported mode. The default v1 deployment remains the bundled single-container PostgreSQL mode.
 docker run -d --name smart-copilot \
   -p 8000:8000 -p 8787:8787 \
   -v /path/to/vaults:/vaults \
@@ -2701,7 +2714,6 @@ clients/desktop/
 ## 30K. Non-Functional Requirements & Success Metrics
 
 ### 30K.1 Performance targets
-Unless otherwise stated, latency targets are p95 measured on the reference fixture corpus of 5,000 pages / 50,000 chunks on the documented reference deployment profile. Chat first-token latency excludes upstream LLM provider latency unless the benchmark is explicitly run with a local model.
 
 | Metric                                | Target               |
 | ------------------------------------- | -------------------- |
@@ -3051,8 +3063,8 @@ CREATE POLICY pages_owner_select ON pages
     )
   );
 
--- Writes restricted to the owner of the private vault. Shared vault writes are governed
--- by system_config.shared_vault_write = 'admin_only' | 'all_users' (Section 5A.5), not vault frontmatter.
+-- Writes restricted to the owner of the private vault, or any authenticated user
+-- for shared vaults if shared-write is enabled in vault frontmatter.
 CREATE POLICY pages_owner_write ON pages
   FOR ALL USING (
     vault_id IN (
