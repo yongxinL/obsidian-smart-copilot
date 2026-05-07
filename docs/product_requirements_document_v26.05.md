@@ -1,9 +1,17 @@
 # Smart Copilot — Product Requirements Document
 
-**Version:** v26.05 (rev. 0)
-**Status:** DRAFT (v0.5.0)
+**Version:** v26.05
+**Status:** DRAFT (v26.05.1)
 **Document type:** Authoritative product specification
 **Audience:** Implementing AI coding agent (no other reference materials required)
+
+---
+**AI Agent Annotations:**
+- Requirement type tags: `[IMPL]` = generate code, `[CFG]` = configuration, `[TEST]` = write test, `[DOC]` = document only
+- File mappings: See Section 30J.1 / 30J.2 for authoritative file paths per module
+- Decision log: See Appendix D
+- Test skeleton: See Appendix E
+- Common pitfalls: See Section 30P
 
 ---
 
@@ -58,10 +66,15 @@
 30M. [Assumptions, Constraints & Dependencies](#30m-assumptions-constraints--dependencies)
 30N. [Risks & Mitigations](#30n-risks--mitigations)
 30O. [Reference Codebases & Resources](#30o-reference-codebases--resources)
+[30P. AI Agent Implementation Guidance](#30p-ai-agent-implementation-guidance)
 31. [Glossary](#31-glossary)
-- [Appendix A — Default Skill List (one-line definitions)](#appendix-a--default-skill-list-one-line-definitions)
-- [Appendix B — Default Tool Surface (22 agent tools + 30+ MCP tools)](#appendix-b--default-tool-surface-22-agent-tools--30-mcp-tools)
-- [Appendix C — Default RLS Policies (pseudocode)](#appendix-c--default-rls-policies-pseudocode)
+- [Appendix A — Default Skill List](#appendix-a--default-skill-list-one-line-definitions)
+- [Appendix B — Default Tool Surface](#appendix-b--default-tool-surface-22-agent-tools--30-mcp-tools)
+- [Appendix C — Default RLS Policies](#appendix-c--default-rls-policies-pseudocode)
+- [Appendix D — Decision Log](#appendix-d--decision-log)
+- [Appendix E — Test Skeleton](#appendix-e--test-skeleton)
+- [Appendix F — Common Pitfalls](#appendix-f--common-pitfalls)
+- [Appendix G — Backup & Restore Runbook (Operational)](#appendix-g--backup--restore-runbook-operational)
 
 ---
 
@@ -69,7 +82,7 @@
 
 ### 1.1 Identity
 - **Product name:** Smart Copilot
-- **Document version:** v26.05.0 (draft 0.5.0)
+- **Document version:** v26.05.1 (draft 0.5.1)
 - **Status:** DRAFT — implementation specification
 - **Scope:** Complete, self-contained product requirements for the Smart Copilot system. This document is the spec; no external references, blueprints, or decision logs are required to implement it.
 
@@ -78,6 +91,7 @@
 - **MUST / MUST NOT / SHOULD / MAY** follow RFC 2119 semantics.
 - "Phase 1" refers to the first delivery phase per Section 6.
 - All file paths use POSIX form. All times are UTC unless otherwise noted.
+- Stored timestamps are UTC; scheduled jobs execute using the container timezone, which MUST be explicitly configured by the operator.
 
 ### 1.3 Out of scope for this document
 - Marketing copy, business model, pricing.
@@ -135,23 +149,23 @@ Smart Copilot stores knowledge as plain markdown files using the **compiled-trut
 ## 3. Goals and Non-Goals
 
 ### 3.1 Goals
-- **REQ-001** Provide a multi-tenant knowledge brain with strict per-user isolation enforced by PostgreSQL Row-Level Security.
-- **REQ-002** Expose all functionality through two coexisting transports from day one: MCP (stdio + HTTP) and REST/WebSocket.
-- **REQ-003** Allow administrators to operate the system fully without a UI, via both CLI commands inside the container and curl-able admin REST endpoints.
-- **REQ-004** Deliver hybrid retrieval (vector + BM25 + typed graph) with Reciprocal Rank Fusion, multi-query expansion, and intent classification.
-- **REQ-005** Auto-extract typed links on every page write with zero LLM calls, populating a typed knowledge graph (people, companies, concepts).
-- **REQ-006** Run a nightly Memory Dream consolidation and a continuous brain-maintenance cycle (stale pages, orphans, dead links, citations, back-links, tag consistency).
-- **REQ-007** Support skills as the first-class workflow primitive with a RESOLVER.md dispatcher, system namespace, and per-user user namespace.
-- **REQ-008** Run as a single Docker container managed by `supervisord` (nodaemon=true), bundling Python 3.12 FastAPI and PostgreSQL 16 with pgvector.
-- **REQ-009** Encrypt all third-party API keys at rest using Fernet.
-- **REQ-010** Ship with `pytest + pytest-asyncio` test suite executing against a real PostgreSQL test database, including RLS isolation tests.
+- **REQ-001** [IMPL] Provide a multi-tenant knowledge brain with strict per-user isolation enforced by PostgreSQL Row-Level Security.
+- **REQ-002** [IMPL] Expose all functionality through two coexisting transports from day one: MCP (stdio + HTTP) and REST/WebSocket.
+- **REQ-003** [IMPL] Allow administrators to operate the system fully without a UI, via both CLI commands inside the container and curl-able admin REST endpoints.
+- **REQ-004** [IMPL] Deliver hybrid retrieval (vector + BM25 + typed graph) with Reciprocal Rank Fusion, multi-query expansion, and intent classification.
+- **REQ-005** [IMPL] Auto-extract typed links on every page write with zero LLM calls, populating a typed knowledge graph (people, companies, concepts).
+- **REQ-006** [IMPL] Run a nightly Memory Dream consolidation and a continuous brain-maintenance cycle (stale pages, orphans, dead links, citations, back-links, tag consistency).
+- **REQ-007** [IMPL] Support skills as the first-class workflow primitive with a RESOLVER.md dispatcher, system namespace, and per-user user namespace.
+- **REQ-008** [IMPL] Run as a single Docker container managed by `supervisord` (nodaemon=true), bundling Python 3.12 FastAPI and PostgreSQL 16 with pgvector.
+- **REQ-009** [IMPL] Encrypt all third-party API keys at rest using Fernet.
+- **REQ-010** [TEST] Deliver `pytest + pytest-asyncio` test suite executing against a real PostgreSQL test database, including RLS isolation tests.
 
 ### 3.2 Non-Goals
-- **REQ-011** Smart Copilot MUST NOT depend on Redis, Celery, RabbitMQ, or any external broker.
-- **REQ-012** Smart Copilot MUST NOT include LightRAG, GraphRAG batch extraction, or any LLM-based link extractor.
-- **REQ-013** LiteLLM MUST be imported as a Python library and MUST NOT be deployed as a separate proxy service.
-- **REQ-014** SQLite, DuckDB, PGLite, and other embedded stores MUST NOT be used as the primary store.
-- **REQ-015** The Electron desktop client is explicitly deferred to the final phase; no UI work is required to declare Phases 1–7 complete.
+- **REQ-011** [DOC] Smart Copilot MUST NOT depend on Redis, Celery, RabbitMQ, or any external broker.
+- **REQ-012** [DOC] Smart Copilot MUST NOT include LightRAG, GraphRAG batch extraction, or any LLM-based link extractor.
+- **REQ-013** [DOC] LiteLLM MUST be imported as a Python library and MUST NOT be deployed as a separate proxy service.
+- **REQ-014** [DOC] SQLite, DuckDB, PGLite, and other embedded stores MUST NOT be used as the primary store.
+- **REQ-015** [DOC] The Electron desktop client is explicitly deferred to the final phase; no UI work is required to declare Phases 1–7 complete.
 
 ---
 
@@ -192,7 +206,7 @@ Smart Copilot stores knowledge as plain markdown files using the **compiled-trut
 - **U4** Nightly Memory Dream runs: stale pages flagged, dead wikilinks audited, citations re-checked, orphans listed in a maintenance report.
 - **U5** Admin curls `POST /admin/users` to create a new user from a script with no UI present.
 - **U6** Remote agent (Claude Desktop) connects to MCP HTTP mode over an authenticated bearer token and operates under `remote=true` trust boundary, blocking dangerous operations.
-- **U7** (Phase 8) Carol opens the Electron client, browses her vault sidebar, chats with the brain, accepts a `vaultWrite` confirmation modal, and watches the Tiptap editor open the new note.
+- **U7** (Phase 8) Carol opens the Electron client, browses her vault sidebar, chats with the brain, accepts a `put_page` confirmation modal, and watches the Tiptap editor open the new note.
 
 ---
 
@@ -203,7 +217,7 @@ Smart Copilot stores knowledge as plain markdown files using the **compiled-trut
 - **REQ-101** The container MUST use `supervisord` with `nodaemon=true` as PID 1 to manage at minimum: `postgres`, `fastapi` (uvicorn), `mcp-http`, `apscheduler`, `watchdog`.
 - **REQ-102** The backend MUST be Python 3.12, FastAPI, async-first, using `asyncpg` for runtime and `psycopg2` for Alembic migrations only.
 - **REQ-103** PostgreSQL 16 with the `pgvector` extension MUST be the sole primary datastore.
-- **REQ-104** Embeddings MUST be stored in `pgvector` HNSW indexes at 1536 dimensions for Phase 1 (`openai/text-embedding-3-small`).
+- **REQ-104** Embeddings MUST be stored in `pgvector` HNSW indexes at 1536 dimensions for Phase 1 (`openai/text-embedding-3-small`). Phase 1 default is 1536; later phases MAY change dimensions via embedding migration (REQ-2105).
 - **REQ-105** BM25 keyword search MUST be implemented with PostgreSQL `tsvector` + `websearch_to_tsquery`.
 - **REQ-106** The wikilink graph MUST be queried via recursive CTEs (no external graph engine).
 - **REQ-107** Hybrid retrieval MUST combine vector + BM25 + graph results using Reciprocal Rank Fusion (RRF) with `score = sum(1/(60 + rank))`.
@@ -321,29 +335,29 @@ External providers: OpenAI · Anthropic · Gemini · DeepSeek
 
 ### 5A.3 Technology stack — frontend (Phase 8)
 
-| Layer           | Technology                         | Notes                                            |
-| --------------- | ---------------------------------- | ------------------------------------------------ |
-| Platform        | Electron (latest stable)           | macOS + Windows; Linux dev only                  |
-| Language        | TypeScript 5.x                     |                                                  |
-| Build           | Vite (renderer) + esbuild (main)   | Electron Forge                                   |
-| Package manager | pnpm                               | workspaces monorepo                              |
-| UI framework    | React 18                           |                                                  |
-| Chat input      | Lexical                            | @mentions support                                |
-| Editor          | Tiptap v2 + @tiptap/markdown       | split-pane WYSIWYG markdown                      |
-| Panels          | react-resizable-panels             |                                                  |
-| File tree       | react-complex-tree                 | accessible, virtualised                          |
-| Components      | Radix UI                           | 15 primitives                                    |
-| Styling         | CSS modules                        | `.sc-` prefix                                    |
-| Icons           | Lucide React                       | primary                                          |
-| Icons           | Material Symbols Outlined          | supplementary (Google variable font)             |
-| Command         | cmdk                               | command palette                                  |
-| Diff            | diff + react-diff-viewer-continued |                                                  |
-| Graph           | Cytoscape.js (lazy-loaded)         | wikilink graph                                   |
-| Sanitisation    | DOMPurify                          | clipboard input only                             |
-| Auto-update     | electron-updater                   | GitHub Releases                                  |
-| Local storage   | electron-store                     | client-only settings (vault path, theme, layout) |
-| API client      | generated from OpenAPI             | auto-synced                                      |
-| Animation       | motion/react (Framer Motion v11)   | panel transitions, modals                        |
+| Layer           | Technology                         | Notes                                                                                                                                                                              |
+| --------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Platform        | Electron (latest stable)           | macOS + Windows; Linux dev only                                                                                                                                                    |
+| Language        | TypeScript 5.x                     |                                                                                                                                                                                    |
+| Build           | Vite (renderer) + esbuild (main)   | Electron Forge                                                                                                                                                                     |
+| Package manager | pnpm                               | workspaces monorepo                                                                                                                                                                |
+| UI framework    | React 18                           |                                                                                                                                                                                    |
+| Chat input      | Lexical                            | @mentions support                                                                                                                                                                  |
+| Editor          | Tiptap v2 + @tiptap/markdown       | split-pane WYSIWYG markdown                                                                                                                                                        |
+| Panels          | react-resizable-panels             |                                                                                                                                                                                    |
+| File tree       | react-complex-tree                 | accessible, virtualised                                                                                                                                                            |
+| Components      | Radix UI                           | 15 primitives                                                                                                                                                                      |
+| Styling         | CSS modules                        | `.sc-` prefix                                                                                                                                                                      |
+| Icons           | Lucide React                       | primary (~1,500 icons, covers 99% of use cases)                                                                                                                                    |
+| Icons           | Material Symbols Outlined          | supplementary (~3,000 additional glyphs for niche needs like Dream-cycle phase indicators, calendar recurrences, and domain-specific status icons; loaded as Google variable font) |
+| Command         | cmdk                               | command palette                                                                                                                                                                    |
+| Diff            | diff + react-diff-viewer-continued |                                                                                                                                                                                    |
+| Graph           | Cytoscape.js (lazy-loaded)         | wikilink graph                                                                                                                                                                     |
+| Sanitisation    | DOMPurify                          | clipboard input only                                                                                                                                                               |
+| Auto-update     | electron-updater                   | GitHub Releases                                                                                                                                                                    |
+| Local storage   | electron-store                     | client-only settings (vault path, theme, layout)                                                                                                                                   |
+| API client      | generated from OpenAPI             | auto-synced                                                                                                                                                                        |
+| Animation       | motion/react (Framer Motion v11)   | panel transitions, modals                                                                                                                                                          |
 
 ### 5A.4 OpenAPI sync convention
 
@@ -358,6 +372,11 @@ External providers: OpenAI · Anthropic · Gemini · DeepSeek
 - **REQ-2705** Every page MUST belong to exactly one namespace: `private` (per-user) or `shared` (visible to all users).
 - **REQ-2706** Filesystem layout: `/vaults/private/{username}/` for private vaults, `/vaults/shared/` for the shared vault. (See Section 7.5.)
 - **REQ-2707** Publishing a private page to shared MUST be an intentional, audited file move.
+- **REQ-2707A** Shared vault rows MUST be readable by all authenticated users.
+- **REQ-2707B** Shared vault write access MUST be governed by a single global policy: `shared_vault_write = admin_only | all_users`. Default is `all_users`.
+- **REQ-2707C** When `shared_vault_write=admin_only`, only users with role=`admin` MAY write to the shared vault.
+- **REQ-2707D** When `shared_vault_write=all_users`, any authenticated user MAY write to the shared vault.
+- **REQ-2707E** Publishing private → shared MUST occur via an intentional, audited move operation (REQ-2707) and MUST enforce the shared vault write policy.
 - **REQ-2708** Cross-namespace wikilinks use explicit prefix `[[shared/Topic]]`.
 - **REQ-2709** Conversations, memories, usage records, and provider keys are ALWAYS private — they MUST NOT have a shared namespace variant.
 
@@ -382,60 +401,90 @@ External providers: OpenAI · Anthropic · Gemini · DeepSeek
 The build order is reversed from typical: backend + MCP first, UI last. v26.05.1 splits the original "Phase 5 — UI" into a fully-specified **Phase 8 — Electron Desktop Client** and renames intermediate phases.
 
 ### 6.1 Phase 1 — Backend foundation + MCP first
-- **REQ-200** Provision the single Docker image, supervisord, PostgreSQL 16 + pgvector, FastAPI skeleton.
-- **REQ-201** Implement users, sessions, MCP tokens, encrypted provider keys, RLS, vault layout.
-- **REQ-202** Implement page CRUD (create/read/update/delete) with frontmatter parsing, compiled-truth/timeline split, content-hash dedup.
-- **REQ-203** Implement watchdog file indexer with thread→asyncio handoff via `loop.call_soon_threadsafe()`.
-- **REQ-204** Stand up MCP server in BOTH stdio and HTTP modes with per-user bearer auth, exposing the full tool surface (Section 9).
-- **REQ-205** Stand up REST + WebSocket API with the parallel surface.
-- **REQ-206** Stand up CLI admin tools and admin REST endpoints (Sections 11 and 12).
-- **REQ-207** Phase 1 acceptance: a new user is created via CLI, an MCP token is issued, Claude Code connects via stdio and successfully `brain_put` / `brain_get` / `brain_search` against the seeded vault.
+- **REQ-200** [IMPL] Provision the single Docker image, supervisord, PostgreSQL 16 + pgvector, FastAPI skeleton.
+- **REQ-201** [IMPL] Implement users, sessions, MCP tokens, encrypted provider keys, RLS, vault layout.
+- **REQ-202** [IMPL] Implement page CRUD (create/read/update/delete) with frontmatter parsing, compiled-truth/timeline split, content-hash dedup.
+- **REQ-203** [IMPL] Implement watchdog file indexer with thread→asyncio handoff via `loop.call_soon_threadsafe()`.
+- **REQ-204** [IMPL] Stand up MCP server in BOTH stdio and HTTP modes with per-user bearer auth, exposing the full tool surface (Section 9). **Note:** The in-product agent runner (ReAct loop, Section 17) is not a Phase 1 deliverable — Phase 1 ships the MCP tool surface and REST/WebSocket endpoints for external agents and the future Phase 2 agent runner.
+- **REQ-205** [IMPL] Stand up REST + WebSocket API with the parallel surface.
+- **REQ-206** [IMPL] Stand up CLI admin tools and admin REST endpoints (Sections 11 and 12).
+- **REQ-207** [TEST] Phase 1 acceptance: a new user is created via CLI, an MCP token is issued, Claude Code connects via stdio and successfully `brain_put` / `brain_get` / `brain_search` against the seeded vault.
 
 ### 6.2 Phase 2 — Hybrid RAG + auto-link extraction + agent
-- **REQ-210** Implement chunking, embedding via LiteLLM, HNSW index population.
-- **REQ-211** Implement BM25 tsvector index and triggers.
-- **REQ-212** Implement zero-LLM auto-link extraction on every page write (Section 15).
-- **REQ-213** Implement intent classifier, multi-query expansion, RRF fusion, compiled-truth boost, 4-layer dedup.
-- **REQ-214** Implement the 22-tool agent surface (Section 17) and brain-first system prompt.
-- **REQ-215** Phase 2 acceptance: graph queries (`who works at X`, `what did Y invest in`) return correct typed-link traversals; hybrid search beats vector-only on a fixture corpus.
+- **REQ-210** [IMPL] Implement chunking, embedding via LiteLLM, HNSW index population.
+- **REQ-211** [IMPL] Implement BM25 tsvector index and triggers.
+- **REQ-212** [IMPL] Implement zero-LLM auto-link extraction on every page write (Section 15).
+- **REQ-213** [IMPL] Implement intent classifier, multi-query expansion, RRF fusion, compiled-truth boost, 4-layer dedup.
+- **REQ-214** [IMPL] Implement the 22-tool agent surface (Section 17) and brain-first system prompt.
+- **REQ-215** [TEST] Phase 2 acceptance: graph queries (`who works at X`, `what did Y invest in`) return correct typed-link traversals; hybrid search beats vector-only on a fixture corpus.
 
 ### 6.3 Phase 3 — Skills + ingestion + entity enrichment + data-research
-- **REQ-220** Implement the skills system, RESOLVER.md dispatcher, system + user namespaces (Section 18).
-- **REQ-221** Ship default ingestion skills: `idea-ingest`, `media-ingest`, `meeting-ingestion`.
-- **REQ-222** Implement tiered entity enrichment (Section 20).
-- **REQ-223** Implement data-research recipes (Section 21).
-- **REQ-224** Phase 3 acceptance: a pasted meeting transcript triggers `meeting-ingestion`, creates/updates person and company pages with compiled-truth + timeline, and emits typed links.
+- **REQ-220** [IMPL] Implement the skills system, RESOLVER.md dispatcher, system + user namespaces (Section 18).
+- **REQ-221** [IMPL] Ship default ingestion skills: `idea-ingest`, `media-ingest`, `meeting-ingestion`.
+- **REQ-222** [IMPL] Implement tiered entity enrichment (Section 20).
+- **REQ-223** [IMPL] Implement data-research recipes (Section 21).
+- **REQ-224** [TEST] Phase 3 acceptance: a pasted meeting transcript triggers `meeting-ingestion`, creates/updates person and company pages with compiled-truth + timeline, and emits typed links.
 
 ### 6.4 Phase 4 — Memory Dream + brain maintenance
-- **REQ-230** Implement nightly Memory Dream with the gbrain `maintain` pattern: stale-page detection, orphan detection, dead-link audit, citation audit, back-link enforcement, tag consistency.
-- **REQ-231** Emit a maintenance report consumable via MCP and REST.
-- **REQ-232** Phase 4 acceptance: scheduled job runs, repairable defects auto-fixed, unrepairable ones surfaced in the report.
+- **REQ-230** [IMPL] Implement nightly Memory Dream with the gbrain `maintain` pattern: stale-page detection, orphan detection, dead-link audit, citation audit, back-link enforcement, tag consistency.
+- **REQ-231** [IMPL] Emit a maintenance report consumable via MCP and REST.
+- **REQ-232** [TEST] Phase 4 acceptance: scheduled job runs, repairable defects auto-fixed, unrepairable ones surfaced in the report.
 
 ### 6.5 Phase 5 — Web search, projects/workspaces, intelligence dashboards (server-side)
-- **REQ-2720** Implement web-search skill (DuckDuckGo + Jina Reader + Wikipedia, with cross-vault reference detection per Section 22D).
-- **REQ-2721** Implement projects/workspaces (folder/tag-scoped contexts) with `include_folders`, `exclude_folders`, `tags`, optional system prompt and default model.
-- **REQ-2722** Implement vault intelligence endpoints (orphans, hubs, link suggestions, vault graph) — server-side only; rendering deferred to Phase 8.
-- **REQ-2723** Phase 5 acceptance: `@web` queries return ranked results; project-scoped queries restrict RAG to the project; orphan/hub endpoints return correct counts on a fixture vault.
+- **REQ-2720** [IMPL] Implement web-search skill (DuckDuckGo + Jina Reader + Wikipedia, with cross-vault reference detection per Section 30H).
+- **REQ-2721** [IMPL] Implement projects/workspaces (folder/tag-scoped contexts) with `include_folders`, `exclude_folders`, `tags`, optional system prompt and default model.
+- **REQ-2722** [IMPL] Implement vault intelligence endpoints (orphans, hubs, link suggestions, vault graph) — server-side only; rendering deferred to Phase 8. The `/vault/organize{,/apply,/undo}` endpoints are also Phase 5 but are workflow tools (not strictly "intelligence") — they can be exercised via CLI/MCP before Phase 8 UI is available.
+- **REQ-2723** [TEST] Phase 5 acceptance: `@web` queries return ranked results; project-scoped queries restrict RAG to the project; orphan/hub endpoints return correct counts on a fixture vault.
 
 ### 6.6 Phase 6 — Admin surfaces + observability
-- **REQ-2730** Implement full admin REST + CLI surfaces: user CRUD, shared API keys, embedding migration, dream status/triggers, MCP server registration.
-- **REQ-2731** Implement Prometheus `/metrics`, structured JSON logs, audit log query endpoint.
-- **REQ-2732** Phase 6 acceptance: admin can register a new user, swap embedding models with progress tracking, view real per-user usage and cost via REST, and observe metrics in Prometheus format.
+- **REQ-2730** [IMPL] Implement full admin REST + CLI surfaces: user CRUD, shared API keys, embedding migration, dream status/triggers, MCP server registration.
+- **REQ-2731** [IMPL] Implement Prometheus `/metrics`, structured JSON logs, audit log query endpoint.
+- **REQ-2732** [TEST] Phase 6 acceptance: admin can register a new user, swap embedding models with progress tracking, view real per-user usage and cost via REST, and observe metrics in Prometheus format.
 
 ### 6.7 Phase 7 — Platform polish + MCP server registry
-- **REQ-2740** Implement MCP server registry (admin-configurable external MCP servers added to the agent's tool surface; Section 17 + Admin endpoints).
-- **REQ-2741** Implement durable-job parent-child DAGs (`minion-orchestrator` skill); job cancellation; rate limits.
-- **REQ-2742** Implement backup automation script + restore procedure (Section 24).
-- **REQ-2743** Phase 7 acceptance: admin adds a new MCP server, agent discovers and uses its tools with confirmation gates; a scheduled DAG of dependent jobs runs to completion across a container restart.
+- **REQ-2740** [IMPL] Implement MCP server registry (admin-configurable external MCP servers added to the agent's tool surface; Section 17 + Admin endpoints).
+- **REQ-2741** [IMPL] Implement durable-job parent-child DAGs (`minion-orchestrator` skill); job cancellation; rate limits.
+- **REQ-2742** [IMPL] Implement a deterministic backup automation script and verified restore procedure, as specified in Section 24A (Backup and Restore).
+- **REQ-2743** [TEST] Phase 7 acceptance: admin adds a new MCP server, agent discovers and uses its tools with confirmation gates; a scheduled DAG of dependent jobs runs to completion across a container restart.
 
 ### 6.8 Phase 8 — Electron desktop client
-- **REQ-2750** Build the Electron/TypeScript/React desktop client (`clients/desktop/`) consuming only the documented REST + WebSocket API.
-- **REQ-2751** Implement the chat-first UI, split-pane Tiptap editor, vault sidebar, system tray + Quick Chat with global hotkey.
-- **REQ-2752** Implement DOMPurify clipboard sanitisation, electron-store local settings, electron-updater auto-update via GitHub Releases.
-- **REQ-2753** Implement the SSE streaming chat UX (citations, tool_start/tool_result, tool_confirm modals, client_request handling).
-- **REQ-2754** Implement Obsidian export feature (folder dialog → batch write of conversations and notes with frontmatter and wikilinks).
-- **REQ-2755** Phase 8 acceptance: end-to-end walkthrough — new user logs in via the Electron client, chats with the brain, accepts a `vaultWrite` confirmation, opens the resulting note in the Tiptap editor, exports a conversation to a configured Obsidian vault path.
-- **REQ-2756** Detailed visual and interaction specs for Phase 8 are tracked separately in `ui-spec.md`; until Phase 8 begins, all user-facing operations MUST be available via CLI, MCP, or admin REST.
+- **REQ-2750** [IMPL] Build the Electron/TypeScript/React desktop client (`clients/desktop/`) consuming only the documented REST + WebSocket API.
+- **REQ-2751** [IMPL] Implement the chat-first UI, split-pane Tiptap editor, vault sidebar, system tray + Quick Chat with global hotkey.
+- **REQ-2752** [IMPL] Implement DOMPurify clipboard sanitisation, electron-store local settings, electron-updater auto-update via GitHub Releases.
+- **REQ-2753** [IMPL] Implement the SSE streaming chat UX (citations, tool_start/tool_result, tool_confirm modals, client_request handling).
+- **REQ-2754** [IMPL] Implement Obsidian export feature (folder dialog → batch write of conversations and notes with frontmatter and wikilinks).
+- **REQ-2755** [TEST] Phase 8 acceptance: end-to-end walkthrough — new user logs in via the Electron client, chats with the brain, accepts a `put_page` confirmation, opens the resulting note in the Tiptap editor, exports a conversation to a configured Obsidian vault path.
+- **REQ-2756** [DOC] Detailed visual and interaction specs for Phase 8 are tracked separately in `ui-spec.md`; until Phase 8 begins, all user-facing operations MUST be available via CLI, MCP, or admin REST.
+
+### 6.9 Phase Dependency Map
+
+> **FOR AI AGENTS:** These are the critical intra-phase and cross-phase ordering constraints. Skipping ahead causes integration failures.
+
+| Dependency                              | From      | To        | Why                                                                       |
+| --------------------------------------- | --------- | --------- | ------------------------------------------------------------------------- |
+| `models/` exists before `services/`     | Any phase | Any phase | Service layer calls ORM models                                            |
+| `dependencies.py` before all routes     | Phase 1   | Phase 1   | `get_current_user`, `require_admin`, `get_db_session` are used everywhere |
+| `mcp/server.py` calls `services/`       | Phase 1   | Phase 1   | MCP and REST share the same service layer (REQ-132, REQ-606)              |
+| `vault/` before `rag/`                  | Phase 1   | Phase 2   | RAG indexes vault content; vault watcher must exist first                 |
+| `rag/queries.py` before `rag/engine.py` | Phase 2   | Phase 2   | `HybridRAGEngine` calls SQL in `queries.py`                               |
+| `skills/` before `agent/`               | Phase 3   | Phase 2   | Agent's `skill_run` tool calls the skills runtime                         |
+| `llm/gateway.py` before everything else | Phase 1   | Phase 2+  | Embedding and LLM calls depend on the router                              |
+| `auth/middleware.py` before `services/` | Phase 1   | Phase 1   | `OperationContext` is constructed by middleware                           |
+
+### 6.10 Phase-Intrinsic Anti-Patterns
+
+> **FOR AI AGENTS:** These patterns look correct but violate phase ordering or architectural constraints.
+
+| Anti-Pattern                                          | Why Wrong                                                | Correct Approach                                                           |
+| ----------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Importing FastAPI types in `services/`                | Makes services non-transport-agnostic (violates REQ-131) | Use Pydantic models only; no `Request`, `Response`, `HTTPException`        |
+| Calling LLM in vault watcher thread                   | Blocking call in sync thread; causes deadlock            | Queue work to asyncio via `call_soon_threadsafe()`, handle in main thread  |
+| MCP tool implementation that bypasses service layer   | Duplicates logic; drift between transports               | All tools call `services/*.py` functions                                   |
+| Using `SET LOCAL` for RLS GUC                         | GUC only lasts transaction scope                         | Use `SET` for session scope; `RESET` in `finally:` block                   |
+| Calling `LiteLLM` directly in routes                  | No cost tracking, no key injection                       | Go through `llm/router.py` which handles both                              |
+| Skipping `enrichment_hash` on page write              | Stale embeddings; re-index storm on model change         | Always compute `enrichment_hash` on write; compare to decide re-enrichment |
+| Storing HTML in `pages.compiled_truth`                | XSS vector; violates REQ-2802                            | Always convert HTML → markdown before storage                              |
+| `mcp_servers` table modified without admin role check | Trust boundary violation                                 | Admin-only RLS; verify `ctx.role == 'admin'` before any mutation           |
 
 ---
 
@@ -501,10 +550,10 @@ The build order is reversed from typical: backend + MCP first, UI last. v26.05.1
 | F-AGENT-02   | Brain-first system prompt + refusal-on-insufficient-evidence          | 2     | REQ-1300–1302              |
 | F-SKILLS-01  | Skills runtime + RESOLVER.md dispatcher                               | 3     | REQ-1400–1441              |
 | F-SKILLS-02  | Default skill pack (29 skills)                                        | 3     | REQ-1440 + Appendix A      |
-| F-INGEST-01  | idea-ingest, media-ingest, meeting-ingestion                          | 3     | REQ-1500–1530              |
+| F-INGEST-01  | idea-ingest, media-ingest, meeting-ingestion                          | 3     | REQ-1500–1543              |
 | F-ENRICH-01  | Tiered (T1/T2/T3) entity enrichment                                   | 3     | REQ-1600–1622              |
 | F-RECIPE-01  | Data-research recipes                                                 | 3     | Section 21                 |
-| F-MEM-01     | Memory Dream nightly consolidation                                    | 4     | Section 22A                |
+| F-MEM-01     | Memory Dream nightly consolidation                                    | 4     | Section 30D                |
 | F-MEM-02     | Brain maintenance (stale, orphans, links, citations, backlinks, tags) | 4     | REQ-230–232                |
 | F-WEB-01     | Web search with cross-vault reference detection                       | 5     | REQ-2720                   |
 | F-WORK-01    | Projects / workspaces (folder/tag scoping + system prompt)            | 5     | REQ-2721                   |
@@ -528,20 +577,31 @@ The build order is reversed from typical: backend + MCP first, UI last. v26.05.1
 - **REQ-300** `users(id UUID PK, username TEXT UNIQUE, email TEXT, password_hash TEXT, role TEXT CHECK in ('admin','user'), is_active BOOL, ...)`.
 - **REQ-301** `sessions(id UUID PK, user_id UUID FK, token_hash TEXT, expires_at TIMESTAMPTZ, ...)`.
 - **REQ-302** `mcp_tokens(id UUID PK, user_id UUID FK, name TEXT, token_hash TEXT, last_used_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ, ...)`.
-- **REQ-303** `provider_keys(id UUID PK, user_id UUID FK, provider TEXT, encrypted_key BYTEA, key_hint TEXT, ...)` — `encrypted_key` MUST NEVER be returned by any API.
-- **REQ-304** `vaults(id UUID PK, owner_user_id UUID NULL, kind TEXT CHECK in ('private','shared'), path TEXT, ...)`.
-- **REQ-305** `pages(id UUID PK, vault_id UUID FK, slug TEXT, title TEXT, type TEXT, frontmatter JSONB, compiled_truth TEXT, timeline TEXT, content_hash TEXT, version INT, ...)`. UNIQUE on `(vault_id, slug)`.
+- **REQ-303** `provider_keys(id UUID PK, user_id UUID FK, provider TEXT, encrypted_key BYTEA, key_hint TEXT, ...)` — `encrypted_key` MUST NEVER be returned by any API. Shared (admin-provided) provider keys MAY exist in system configuration; per-request resolution order is defined in Section 24.2.
+- **REQ-304** `vaults( id UUID PK, owner_user_id UUID NULL, kind TEXT CHECK in ('private','shared'), path TEXT, ...)`.
+- **REQ-305**  `pages( id UUID PK, vault_id UUID FK, slug TEXT, title TEXT, type TEXT CHECK in ( 'person','company','concept','idea','project', 'note', 'meeting','article','media','personal' ), note_type TEXT CHECK in ('fleeting','literature','permanent', 'archived_fleeting','skill','moc' ) NULL, frontmatter JSONB, compiled_truth TEXT, compiled_truth_updated_at TIMESTAMPTZ, content_hash TEXT, enrichment_hash TEXT, version INT, ...)`. UNIQUE on (vault_id, slug). Two separate type systems apply: - `type` is the **dossier kind** (what kind of entity or object the page describes). - `note_type` is the **Zettelkasten lifecycle kind** (what role the page plays in the knowledge cycle; see §30E). `type` represents the semantic dossier kind of the page and MUST remain limited to the values defined in the enum above. Capture‑specific distinctions (e.g., tweet, voice note, original capture) MUST NOT introduce new `type` values and are represented via folder conventions and optional frontmatter fields (e.g., `subtype`). `compiled_truth_updated_at` is updated on every successful `update_compiled_truth` call and is used for stale detection. `enrichment_hash` is the xxhash64 (XXH64) of concatenated enrichment inputs and is compared on write to decide whether re‑enrichment and re‑embedding are required. `content_hash` is the xxhash64 (XXH64) of the raw page file bytes as stored on disk, including YAML frontmatter and body, with no normalization (exact byte comparison; line endings preserved). It is used solely as a low‑level change detector for: - filesystem reconciliation (watchdog vs database), - API/MCP write idempotency, - deciding whether a page requires re‑parse and re‑index. `content_hash` MUST NOT be used for semantic comparison, enrichment logic, search freshness, or staleness checks. **Semantic hashing (reserved, non‑v1):**  A future revision MAY introduce an optional `semantic_hash` representing a hash of a normalized parsed representation of the page (e.g., sorted frontmatter keys, normalized whitespace, parsed markdown body) to distinguish semantic stability from byte‑level changes. `semantic_hash` is not implemented in v1, does not exist as a column, and MUST NOT affect indexing or enrichment behavior unless explicitly introduced by a future migration. 
 - **REQ-306** `page_versions(id UUID PK, page_id UUID FK, version INT, frontmatter JSONB, compiled_truth TEXT, timeline TEXT, content_hash TEXT, created_at TIMESTAMPTZ)`.
-- **REQ-307** `chunks(id UUID PK, page_id UUID FK, chunk_index INT, kind TEXT CHECK in ('compiled_truth','timeline','frontmatter'), text TEXT, tsv tsvector GENERATED, embedding vector(1536), ...)`.
+- **REQ-307** `chunks(id UUID PK, page_id UUID FK, chunk_index INT, kind TEXT CHECK in ('compiled_truth','timeline','frontmatter'), text TEXT, enriched_content TEXT, tsv tsvector GENERATED, embedding vector(<rag.embedding_dimensions>), ...)`. `text` is raw content; `enriched_content` includes enrichment prefix (e.g. "Entity: John Doe | Role: CEO") used for embedding; `tsv` is computed from `text`; `embedding` is computed from `enriched_content`. `embedding` dimensions MUST equal the active configured embedder dimensions; migrations MUST handle dimension changes by rebuilding the column type and vector indexes (REQ-2105).
 - **REQ-308** `entities(id UUID PK, vault_id UUID FK, kind TEXT CHECK in ('person','company','concept','idea'), canonical_slug TEXT, aliases TEXT[], ...)`.
 - **REQ-309** `links(id UUID PK, src_page_id UUID FK, dst_entity_id UUID FK, link_type TEXT, confidence REAL, source_kind TEXT CHECK in ('wikilink','bare_slug','inferred'), context_excerpt TEXT, ...)`. INDEX on `(dst_entity_id, link_type)`.
 - **REQ-310** `timeline_events(id UUID PK, page_id UUID FK, event_date DATE, source TEXT, detail TEXT, raw_ref TEXT, ...)`.
 - **REQ-311** `tags(id UUID PK, vault_id UUID FK, name TEXT)`, `page_tags(page_id, tag_id)` join.
 - **REQ-312** `jobs(id UUID PK, parent_id UUID NULL, kind TEXT, status TEXT, payload JSONB, result JSONB, run_at TIMESTAMPTZ, attempts INT, idempotency_key TEXT UNIQUE NULL, ...)`.
-- **REQ-313** `audit_log(id UUID PK, user_id UUID NULL, action TEXT, target_kind TEXT, target_id UUID NULL, payload JSONB, created_at TIMESTAMPTZ)`.
+- **REQ-313** `audit_log(id UUID PK, user_id UUID NULL, action TEXT, target_kind TEXT, target_id UUID NULL, request_id UUID NULL, payload JSONB, created_at TIMESTAMPTZ)`. `request_id` enables correlation with `OperationContext.request_id` (REQ-520).
 - **REQ-314** `skills(id UUID PK, namespace TEXT CHECK in ('system','user'), user_id UUID NULL, name TEXT, version TEXT, frontmatter JSONB, body TEXT, ...)`. UNIQUE `(namespace, COALESCE(user_id, '00000000-...'), name)`.
 - **REQ-315** `recipes(id UUID PK, namespace TEXT, user_id UUID NULL, name TEXT, version TEXT, yaml TEXT, ...)`.
 - **REQ-316** `eval_candidates(id UUID PK, user_id UUID FK, kind TEXT, query TEXT, retrieved_slugs TEXT[], ...)` — opt-in capture.
+- **REQ-360** `conversations(id UUID PK, user_id UUID FK, title TEXT, mcp_mode TEXT CHECK in ('disable','auto','manual') DEFAULT 'auto', web_search_enabled BOOL DEFAULT false, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ)`.
+- **REQ-361** `messages(id UUID PK, conversation_id UUID FK, role TEXT CHECK in ('user','assistant','system'), content TEXT, citations JSONB, tokens_used INT, model TEXT, created_at TIMESTAMPTZ)`.
+- **REQ-362** `memories(id UUID PK, user_id UUID FK, content TEXT, source_conversation_id UUID FK, extracted_at TIMESTAMPTZ, archived BOOL DEFAULT false)`.
+- **REQ-363** `dream_audit_log(id UUID PK, user_id UUID FK, run_at TIMESTAMPTZ, kind TEXT, status TEXT, pages_processed INT, memories_created INT, errors JSONB)`.
+- **REQ-364** `projects(id UUID PK, user_id UUID FK, name TEXT, folder_patterns TEXT[], tag_includes TEXT[], tag_excludes TEXT[], system_prompt TEXT, default_model TEXT, created_at TIMESTAMPTZ)`.
+- **REQ-365** `operation_log(id UUID PK, user_id UUID FK, operation TEXT, target_kind TEXT, target_id UUID, payload JSONB, created_at TIMESTAMPTZ)`.
+- **REQ-366** `llm_usage(id UUID PK, user_id UUID FK, provider TEXT, model TEXT, input_tokens INT, output_tokens INT, cost_usd REAL, conversation_id UUID FK, created_at TIMESTAMPTZ)`.
+- **REQ-367** `index_events(id UUID PK, user_id UUID FK, event_type TEXT, page_slug TEXT, details JSONB, created_at TIMESTAMPTZ)`.
+- **REQ-368** `user_settings(id UUID PK, user_id UUID FK, settings JSONB, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ)`.
+- **REQ-369** `system_config(id UUID PK, key TEXT UNIQUE, value JSONB, updated_at TIMESTAMPTZ)`.
+- **REQ-370** `mcp_servers(id UUID PK, name TEXT UNIQUE, type TEXT CHECK in ('stdio','streamable_http'), command TEXT, args TEXT[], env JSONB, url TEXT, auth_key_provider TEXT, always_allow TEXT[], enabled BOOL DEFAULT true, last_connected_at TIMESTAMPTZ, last_error TEXT)`. Admin-only RLS.
 
 ### 7.2 Indexes
 - **REQ-320** HNSW index on `chunks.embedding` with `vector_cosine_ops`.
@@ -570,7 +630,7 @@ The build order is reversed from typical: backend + MCP first, UI last. v26.05.1
 
 ### 8.1 Users and sessions
 - **REQ-400** Passwords MUST be hashed with argon2-cffi (memory ≥ 64 MiB, iterations ≥ 3, parallelism ≥ 1).
-- **REQ-401** Web sessions MUST use opaque random tokens stored as a SHA-256 hash, with sliding expiration.
+- **REQ-401** Sessions are represented by refresh tokens stored as SHA‑256 hashes in sessions. /auth/login returns {access_jwt, refresh_token}; access JWT is short-lived and not stored server-side; refresh token is stored hashed and revocable.
 - **REQ-402** Login MUST rate-limit at 10 failures / 15 minutes / IP+username pair.
 
 ### 8.2 MCP bearer tokens
@@ -583,6 +643,19 @@ The build order is reversed from typical: backend + MCP first, UI last. v26.05.1
 ### 8.3 RBAC
 - **REQ-420** Two roles only: `admin` and `user`. Admin grants access to admin REST endpoints and CLI tools.
 - **REQ-421** All admin operations MUST be auditable in `audit_log`.
+
+### 8.4 Trusted Proxy Headers (Rate Limiting)
+- **REQ-422** Client IP for rate limiting MUST use the direct socket peer IP by default.
+- **REQ-423** `X-Forwarded-For` (or equivalent) MUST be honored only when `SMARTCOPILOT_TRUST_PROXY=true`.
+- **REQ-424** When `SMARTCOPILOT_TRUST_PROXY=true`, forwarded headers MUST be accepted only from allowlisted proxy IP ranges.
+- **REQ-425** If multiple IPs exist in `X-Forwarded-For`, the left-most IP MUST be treated as the client IP.
+
+### 8.5 Step-Up (Fresh) Authentication for Admin Operations
+- **REQ-430** Destructive or security-sensitive admin operations MUST require a "fresh authentication" factor verified within the last 60 minutes.
+- **REQ-431** The system MUST provide a step-up authentication mechanism (e.g., `POST /api/v1/admin/reauth`) that re-validates the admin’s credentials and records a freshness marker.
+- **REQ-432** Freshness MUST be represented as a time-bound value (e.g., `admin_fresh_until`) attached to the admin session or token.
+- **REQ-433** Authorization middleware MUST enforce admin freshness for all routes marked as destructive and reject requests when freshness has expired. 
+- **REQ-434** When fresh authentication is required but missing or expired, the system MUST return a structured `admin_reauth_required` error.
 
 ---
 
@@ -600,13 +673,13 @@ The build order is reversed from typical: backend + MCP first, UI last. v26.05.1
 
 ### 9.3 Trust boundary (OperationContext)
 - **REQ-520** Every MCP request MUST be wrapped in an `OperationContext` with fields: `user_id`, `transport` ∈ {`stdio`,`http`}, `remote` ∈ {`true`,`false`}, `client_name`, `request_id`.
-- **REQ-521** STDIO requests from a process whose CWD is inside `/vaults/` MUST be marked `remote=false`; HTTP requests MUST be marked `remote=true`.
+- **REQ-521** STDIO requests from a process whose CWD is inside `/vaults/` MUST be marked `remote=false`; HTTP requests MUST be marked `remote=true`. STDIO transport is always treated as a local-trust execution context; security relies on token scoping and the trust boundary, not on working-directory heuristics alone.
 - **REQ-522** `remote=true` callers MUST be confined to vault-relative paths; symlinks, `..`, and absolute paths outside the vault MUST be rejected.
 - **REQ-523** Slugs and filenames from `remote=true` callers MUST match `^[a-z0-9][a-z0-9\-]{0,127}$` (allowlist; no control chars, no RTL overrides, no backslashes).
 - **REQ-524** A documented set of "protected" tools (e.g., `jobs.submit_shell`, `vault.delete`, `system.exec`) MUST be blocked for `remote=true` and only permitted for CLI/operator callers.
 
 ### 9.4 Tool surface (≥ 30 MCP tools, mirroring the REST API)
-The MCP tool surface MUST include at minimum: `brain.search`, `brain.query`, `brain.get`, `brain.put`, `brain.append_timeline`, `brain.update_compiled_truth`, `brain.list`, `brain.delete`, `brain.history`, `brain.diff`, `brain.revert`, `brain.tags.list`, `brain.tags.add`, `brain.tags.remove`, `brain.backlinks`, `brain.graph.traverse`, `brain.entity.get`, `brain.entity.merge`, `brain.entity.alias.add`, `brain.stats`, `brain.health`, `ingest.idea`, `ingest.media`, `ingest.meeting`, `enrich.entity`, `recipe.run`, `skill.list`, `skill.get`, `skill.run`, `jobs.submit`, `jobs.status`, `jobs.cancel`, `maintain.run`, `maintain.report`. Each MUST be defined per Section 10's service contract.
+The MCP tool surface MUST include at minimum: `brain.search`, `brain.query`, `brain.get`, `brain.put`, `brain.append_timeline`, `brain.update_compiled_truth`, `brain.list`, `brain.delete`, `brain.history`, `brain.diff`, `brain.revert`, `brain.tags.list`, `brain.tags.add`, `brain.tags.remove`, `brain.backlinks`, `brain.graph.traverse`, `brain.entity.get`, `brain.entity.merge`, `brain.entity.alias.add`, `brain.stats`, `brain.health`, `apability_discovery`, `ingest.idea`, `ingest.media`, `ingest.meeting`, `enrich.entity`, `recipe.run`, `skill.list`, `skill.get`, `skill.run`, `jobs.submit`, `jobs.status`, `jobs.cancel`, `maintain.run`, `maintain.report`. Each MUST be defined per Section 10's service contract.
 
 - **REQ-530** Each tool MUST have a JSON schema for inputs and outputs.
 - **REQ-531** Each tool MUST be testable via an integration test that calls the underlying service directly with a constructed `OperationContext`.
@@ -617,6 +690,7 @@ The MCP tool surface MUST include at minimum: `brain.search`, `brain.query`, `br
 
 ### 10.1 Service layer parity
 - **REQ-600** Every MCP tool MUST have a 1:1 REST endpoint backed by the same service function.
+- **REQ-603A** "Special interactions" implemented via SSE/WebSocket events (e.g., `client_request: read_clipboard`, `client_request: open_editor`) are NOT MCP tools and are explicitly excluded from the MCP↔REST 1:1 parity requirement.
 - **REQ-601** REST endpoints MUST be prefixed `/api/v1/`.
 - **REQ-602** All REST responses MUST be Pydantic models. `encrypted_key` MUST NOT appear in any response schema.
 
@@ -626,6 +700,18 @@ The MCP tool surface MUST include at minimum: `brain.search`, `brain.query`, `br
 
 ### 10.3 Errors
 - **REQ-620** Errors MUST follow `{error: {code, message, details?}}` with stable codes: `unauthorized`, `forbidden`, `not_found`, `validation_error`, `conflict`, `rate_limited`, `service_unavailable`, `internal_error`.
+
+### 10.4 Capability Discovery
+- **REQ-630** The system MUST expose a capability discovery interface that allows clients to determine supported features and limits at runtime.
+- **REQ-631** Capability discovery MUST be available via:
+  - REST: `GET /api/v1/capabilities`
+  - MCP tool: `capability_discovery`
+- **REQ-632** The capability response MUST include at minimum:
+  - supported transports (`stdio`, `http`)
+  - clipboard capture availability
+  - enabled ingestion capabilities (ocr, transcription, repo_ingest)
+  - operational limits (max_upload_bytes, max_tool_payload_bytes)
+- **REQ-633** Capability discovery MUST be read-only and MUST NOT require elevated permissions.
 
 ---
 
@@ -686,16 +772,36 @@ Every CLI admin command MUST have a corresponding admin REST endpoint, all under
 - **REQ-901** Vaults MUST be a directory tree of markdown files (`.md`) with optional binary attachments under `.attachments/`.
 - **REQ-902** A vault MUST contain a `RESOLVER.md` at its root for that vault's user-namespace skills.
 
+#### 13.1.1 Shared Vault Write Rules
+- **REQ-903** Shared vault write access MUST follow the global policy `shared_vault_write` as defined in Section 5A.5.
+- **REQ-904** All API/MCP paths that write to `/vaults/shared/` MUST enforce this policy before any filesystem mutation.
+- **REQ-905** All writes to the shared vault (create/update/delete/move) MUST be recorded in `operation_log` and `audit_log` with user_id, action, target path/slug, and request_id correlation.
+
 ### 13.2 File watching and indexing
 - **REQ-910** A `watchdog` Observer MUST monitor each vault.
 - **REQ-911** Filesystem events MUST be handed to the asyncio loop via `loop.call_soon_threadsafe(...)`; no blocking call MUST occur inside the watchdog thread.
-- **REQ-912** A debounced indexer MUST coalesce rapid edits (default 750 ms) and re-chunk + re-embed only changed pages, identified by content hash.
+- **REQ-912** A debounced indexer MUST coalesce rapid edits (default 750 ms) and re-chunk + re-embed only changed pages, identified by content hash. The indexer’s "changed page" detection MUST compare pages.content_hash (XXH64 raw bytes) against the newly computed value from disk; if equal, the page MUST be skipped.
 - **REQ-913** The indexer MUST update tsvector and HNSW indexes idempotently.
 - **REQ-914** On startup, a full reconciliation pass MUST detect added, removed, and modified files vs the database and reconcile.
 
 ### 13.3 Conflict handling
-- **REQ-920** "Human always wins": if a file on disk differs from the database, the on-disk content is authoritative; the database is updated to match.
-- **REQ-921** API/MCP writes MUST atomically write to disk (temp + rename) AND update the database in the same transaction; on disk-write failure the DB transaction MUST be rolled back.
+- **REQ-920** "Human always wins": if a file on disk differs from the database, the on-disk content is authoritative; the database is updated to match. "Differs" means the computed XXH64 raw-bytes content_hash for disk content does not match the database pages.content_hash.
+- **REQ-921** API/MCP writes MUST be crash-safe and follow this sequence:
+  1) Write to a temporary file in the same directory.
+  2) fsync the temp file.
+  3) Atomic rename to the target path.
+  4) Read back the on-disk bytes and compute `content_hash`.
+  5) Update the database in a single DB transaction using the computed `content_hash`.
+  If step (4) or (5) fails, the write MUST be treated as failed and logged.
+- **REQ-921A** Conflict detection MUST compare on-disk `content_hash` with `pages.content_hash`. If the file changed between steps (1) and (3), the API write MUST abort with `conflict`.
+- **REQ-921B** If a user modifies a file on disk while an agent-initiated write is in progress, the on-disk content is authoritative ("human always wins"); the agent write MUST abort, be logged, and be retriable after reconciliation.
+- **REQ-930** Pages MAY support optimistic concurrency control using a `version` field.
+- **REQ-931** Clients MAY supply `expected_version` with write requests. If the stored version does not match, the server MUST reject the request with HTTP 409 Conflict.
+- **REQ-932** Conflict responses MUST include:
+  - current page version
+  - content_hash
+  - pointers to diff or reconciliation guidance
+- **REQ-933** After a conflict, filesystem watchers MUST reconcile disk and DB content according to the "human always wins" rule.
 
 ---
 
@@ -703,7 +809,7 @@ Every CLI admin command MUST have a corresponding admin REST endpoint, all under
 
 ### 14.1 Frontmatter
 - **REQ-1000** Every page MUST have YAML frontmatter delimited by `---` lines.
-- **REQ-1001** Required fields: `type` (one of `person|company|concept|idea|project|note|meeting|article|media|personal`), `title`.
+- **REQ-1001** Required fields: `type` (one of `person|company|concept|idea|project|note|meeting|article|media|personal`), `title`. Optional structured fields include: `subtype`, `tags`, `aliases`, `slug`, `created`, `updated`, `score`, and type-specific fields (e.g., role, company, stage).
 - **REQ-1002** Optional structured fields: `tags`, `aliases`, `slug`, `created`, `updated`, `score`, plus type-specific fields (`role`, `company`, `stage`, etc.).
 
 ### 14.2 Compiled truth + timeline split
@@ -719,8 +825,21 @@ Every CLI admin command MUST have a corresponding admin REST endpoint, all under
 - **REQ-1022** Code fences MUST be stripped before link extraction to avoid false positives.
 
 ### 14.4 Citations
+
+> **Three citation formats coexist in this system:**
+> - `[^srcN]` — in-page footnotes in the compiled-truth section (REQ-1030)
+> - `[slug]` — agent-synthesized answer citations resolved to retrieved page hits (REQ-1221)
+> - `[N]` (numeric) — chat-message-scoped streaming citations in SSE `tool_result` / `citations` events (Section 30B.4)
+
 - **REQ-1030** Claims in compiled truth SHOULD carry a citation footnote `[^src1]` resolving to a `[^src1]: <ref>` line at end of compiled-truth section.
 - **REQ-1031** The citation auditor (Section 22) MUST flag dangling and orphaned citations.
+
+### 14.6 Attachment Policy
+- **REQ-1040** Attachments MUST be stored under `.attachments/` and referenced from markdown pages via relative links.
+- **REQ-1041** The system MUST enforce a maximum attachment size (configurable; default 50 MB).
+- **REQ-1042** Only allowlisted MIME types MAY be attached. Disallowed types MUST be rejected early.
+- **REQ-1043** Text-bearing attachments (PDF, image via OCR) MAY have extracted text indexed, but extracted text MUST NOT be embedded into the page markdown unless explicitly requested.
+- **REQ-1044** Attachments MUST be content-hashed; duplicate attachments MAY be deduplicated internally but MUST preserve logical references.
 
 ---
 
@@ -765,6 +884,7 @@ Every CLI admin command MUST have a corresponding admin REST endpoint, all under
 - **REQ-1202** For each query, run vector search (HNSW cosine top-K=50) and BM25 search (`websearch_to_tsquery`, top-K=50) in parallel.
 - **REQ-1203** Run a graph query when the intent is `entity` or `temporal`, fetching pages within depth 2 of detected entities.
 - **REQ-1204** Fuse results using RRF: `score(d) = Σ_i 1 / (60 + rank_i(d))` across all retrievers.
+- **REQ-1204A** Hybrid fusion uses Reciprocal Rank Fusion (RRF) without per-retriever weighting; `rag.hybrid_weights` is not used in v1.
 - **REQ-1205** Apply compiled-truth boost (+0.15) to chunks with `kind='compiled_truth'`.
 - **REQ-1206** Apply backlink boost: `score(d) += min(0.10, in_degree(target_entity)/100)`.
 - **REQ-1207** 4-layer dedup, in order: by source page, by cosine > 0.85, type cap (no single `type` exceeds 60%), per-page max chunks (default 3).
@@ -967,14 +1087,39 @@ Hermes' skills are markdown procedural-memory files (compatible with the `agents
 - **REQ-1505B** A CI check MUST fail the build if any client artifact references a tool that no longer exists in the MCP registry.
 - **REQ-1505C** Each client README MUST include: a 30-second quickstart, a screenshot or text transcript verifying the connection, and a troubleshooting table mapping symptoms to root causes.
 
+### 18.7 Skill and Recipe Schema Compatibility
+- **REQ-1450** The server MUST define a supported compatibility range for skill and recipe schema versions.
+- **REQ-1451** Skill and recipe frontmatter MUST declare a schema version.
+- **REQ-1452** The system MUST validate schema version compatibility at load time and MUST reject incompatible skills or recipes.
+- **REQ-1453** Incompatible definitions MUST be rejected with a structured `schema_incompatible` error.
+
 ---
 
 ## 19. Ingestion Skills
 
+### 19.0 URL Fetch Security Policy
+- **REQ-1531** The URL Fetch Security Policy applies to idea-ingest and to `/api/v1/web-search/fetch` (Jina Reader pipeline).
+- **REQ-1532** Only `http` and `https` URL schemes are permitted for any server-side fetch.
+- **REQ-1533** Requests to loopback, link-local, or private CIDR ranges MUST be rejected (SSRF protection).
+- **REQ-1534** DNS MUST be resolved per request and every redirect target MUST be revalidated against SSRF rules.
+- **REQ-1535** Maximum redirects MUST be 2.
+- **REQ-1536** Maximum response size MUST be 10 MB.
+- **REQ-1537** Connection timeout MUST be 10s and read timeout MUST be 10s unless otherwise specified.
+- **REQ-1538** Violations MUST return a structured `fetch_blocked` error.
+- **REQ-1539** Fetch requests MUST use a fixed User-Agent: `SmartCopilotBot/1.0`.
+- **REQ-1540** If robots.txt disallows the requested URL for this User-Agent, the fetch MUST be rejected with `fetch_disallowed`.
+- **REQ-1541** robots.txt results MUST be cached for 24 hours per host.
+- **REQ-1542** robots.txt fetch timeout MUST be 5 seconds. When third-party readers such as Jina Reader are used, robots.txt enforcement MAY be delegated to the reader; in such cases the reader is considered responsible for compliance.
+
 ### 19.1 idea-ingest (links / articles / tweets)
 - **REQ-1500** Inputs: a URL or pasted article text; an optional note.
-- **REQ-1501** Behavior: fetch the URL (respect robots.txt, 10 s timeout), extract main content via readability, classify as `article` or `tweet`, create or update a page under `articles/<slug>` or `tweets/<slug>` with executive summary, verbatim quotes (preserved exactly), key insights, "why it matters", and an author person page. MUST chain into `enrich` for each detected person/company.
+- **REQ-1501** Behavior: fetch the URL (respect robots.txt, timeout 10s), extract main content via readability, classify the source as long-form article or short-form post (e.g. tweet), and create or update a page:
+  - under `articles/<slug>/` for long-form content
+  - under `articles/tweets/<slug>/` for tweets or short-form posts
+All pages created by idea-ingest MUST use `type: article`. When the source is a tweet or short-form post, the page MUST include `subtype: tweet` in frontmatter. The page includes an executive summary, verbatim quotes (preserved exactly), key insights, and a "why it matters" section, and MUST create or update an author person page. The skill MUST chain into `enrich` for each detected person or company.
 - **REQ-1502** Errors: `fetch_failed`, `unreadable_content`, `unsupported_url` MUST be returned as structured errors.
+> Note: `tweet` is represented as `type: article` with `subtype: tweet` (not as a first-class `type` value).
+
 
 ### 19.2 media-ingest (video / audio / PDF / screenshots / repos)
 - **REQ-1510** Inputs: a file path inside the vault `.attachments/` directory or a URL.
@@ -983,7 +1128,15 @@ Hermes' skills are markdown procedural-memory files (compatible with the `agents
   - PDF: extract text (and OCR as fallback), preserve page numbers in citations.
   - Screenshots: OCR; store the image in `.attachments/`.
   - Repos: clone shallow, summarize README + structure.
-- **REQ-1512** Voice notes MUST be captured verbatim — exact phrasing preserved, never paraphrased — and routed to one of `originals/`, `concepts/`, `people/`, `companies/`, `ideas/`, `personal/`, `voice-notes/` based on content classification.
+- **REQ-1512** Voice notes MUST be captured verbatim (exact phrasing preserved, never paraphrased). Pages created from voice notes MUST use: 
+  - `type: personal`
+  - `subtype: voice_note`
+Voice-note pages are stored under `media/voice-notes/<slug>/`. Other media outputs follow these rules:
+  - Original source captures → `type: media`, `subtype: original`, stored under `media/originals/<slug>/`
+  - Classified concept captures → `type: concept`
+  - Classified people or company captures → `type: person` / `company`
+  - Idea captures → `type: idea`
+No media-ingest flow may introduce new `type` enum values.
 
 ### 19.3 meeting-ingestion (transcripts)
 - **REQ-1520** Inputs: a meeting transcript (Circleback-style or generic).
@@ -991,7 +1144,7 @@ Hermes' skills are markdown procedural-memory files (compatible with the `agents
 - **REQ-1522** Re-ingestion of the same transcript (same content hash) MUST be idempotent.
 
 ### 19.4 Wiring rule
-- **REQ-1530** Every ingestion skill MUST call `enrich` for each detected person and company. Implementations missing this call MUST be rejected by `check-resolvable`.
+- **REQ-1543** Every ingestion skill MUST call enrich for each detected person and company. Implementations missing this call MUST be rejected by check-resolvable.
 
 ---
 
@@ -1071,36 +1224,135 @@ Hermes' skills are markdown procedural-memory files (compatible with the `agents
 ### 23.4 Recovery
 - **REQ-1930** On boot, the worker MUST scan for `running` jobs orphaned by a crash, mark them `recovered`, and re-enqueue them.
 
+### 23.5 Indexing Throttling and Backpressure
+- **REQ-1940** The system MUST enforce limits on concurrent indexing and embedding jobs.
+- **REQ-1941** Backpressure thresholds MAY be configured to limit queue depth and per-user indexing load.
+- **REQ-1942** When throttling limits are exceeded, new indexing requests MUST fail fast with a structured error and retry guidance.
+- **REQ-1943** Throttling limits and queue pressure MUST be observable via metrics and capability discovery.
+
 ---
 
 ## 24. LLM Provider Integration
 
 ### 24.1 LiteLLM as a library
+
 - **REQ-2000** LiteLLM MUST be imported as a Python library; no proxy process is permitted.
 - **REQ-2001** A central `llm_router` service MUST resolve `model` strings to provider+model and inject the user's encrypted-then-decrypted API key per request.
 - **REQ-2002** Decrypted keys MUST be held only in process memory for the duration of the request.
 
 ### 24.2 Provider key management
+
 - **REQ-2010** Keys MUST be Fernet-encrypted with a master key from `SMARTCOPILOT_FERNET_KEY` (mandatory env var; container refuses to start if absent).
 - **REQ-2011** Master key rotation MUST be supported via `smartcopilot admin rotate-fernet --new-key <…>`.
+- **REQ-2012** Provider key resolution MUST follow this precedence order for every LLM/embedding request:
+  1) user-scoped provider key (`provider_keys.user_id = ctx.user_id`)
+  2) shared/admin-provided key (system-configured shared key store)
+  3) return a structured `missing_provider_key` error if neither exists.
+- **REQ-2013** The key source used for each request MUST be recorded for auditing and cost attribution as `key_type ∈ {user, shared}` in `llm_usage`.
 
 ### 24.3 Routing tiers
+
 - **REQ-2020** The router MUST expose tiers `cheap`, `balanced`, `strong` and a default mapping per provider; skills declare which tier they want, not a specific model.
 - **REQ-2021** Per-user provider preferences MUST override the default tier mapping.
 
 ### 24.4 Cost and rate limits
+
 - **REQ-2030** Token usage and cost MUST be recorded per request with user attribution.
 - **REQ-2031** Per-user daily budgets MAY be configured; exceeding the budget MUST return `rate_limited`.
+
+## 24A. Backup and Restore
+
+Smart Copilot MUST provide a deterministic, operator‑controlled backup and restore mechanism suitable for single‑container and homelab deployments, without relying on external services.
+
+### 24A.1 Backup Scope
+
+- **REQ-2050** A full system backup MUST include:
+  - All PostgreSQL application data, including pgvector indexes and job metadata.
+  - All vault filesystem content under `/vaults/` (private and shared).
+  - All non‑secret server configuration files under `/config/`.
+- **REQ-2051** A backup MUST explicitly exclude:
+  - Decrypted third‑party provider API keys.
+  - The Fernet master key (`SMARTCOPILOT_FERNET_KEY`).
+  - Transient runtime state (logs, caches, temporary files, sockets).
+- **REQ-2052** Provider keys MUST remain encrypted in the backup exactly as stored in the database.
+- **REQ-2053** The operator is responsible for preserving the Fernet key separately; loss of the Fernet key makes encrypted provider keys unrecoverable after restore.
+
+### 24A.2 Backup Format
+
+- **REQ-2060** Backups MUST be produced as a single compressed archive  (e.g., `.tar.zst` or `.tar.gz`).
+- **REQ-2061** The backup archive MUST contain the following top‑level layout:
+  - `db/` — logical PostgreSQL dump (pg_dump, plain or custom format).
+  - `vaults/` — exact copy of the vault directory tree.
+  - `config/` — server configuration files (non‑secret only).
+  - `manifest.json` — backup metadata.
+- **REQ-2062** `manifest.json` MUST include at minimum:
+  - Backup timestamp (UTC).
+  - Smart Copilot version.
+  - Database schema migration head.
+  - List of included components (db, vaults, config).
+  - Backup tool version.
+
+### 24A.3 Backup Execution
+
+- **REQ-2070** A backup MUST be executable via a CLI command (`smartcopilot backup create`).
+- **REQ-2071** A backup MUST also be executable as a durable job (`jobs.submit` with `kind=backup`).
+- **REQ-2072** Backup execution MUST be safe to run while the system is online and MUST NOT require service shutdown.
+- **REQ-2073** Backup execution MUST NOT modify vault files or database contents.
+- **REQ-2074** Every successful or failed backup attempt MUST be recorded in `audit_log`.
+
+### 24A.4 Restore Procedure
+
+- **REQ-2080** Restore MUST be performed into a fresh or empty Smart Copilot instance.
+- **REQ-2081** Restore MUST:
+  - Load the database dump.
+  - Restore vault files exactly as backed up.
+  - Restore configuration files.
+  - Run all pending database migrations automatically on first boot.
+- **REQ-2082** Restore MUST fail fast if:
+  - The database schema version is incompatible.
+  - Vault paths are not writable.
+  - The required Fernet key is not supplied at restore time.
+- **REQ-2083** Restore MUST NOT silently skip failed components; partial restores MUST be rejected.
+
+### 24A.5 Restore Verification
+
+- **REQ-2090** A restore verification command MUST exist  
+  (`smartcopilot backup verify`) that validates:
+  - Database connectivity and schema health.
+  - Presence of expected tables and indexes.
+  - Vault readability and basic integrity.
+  - Consistency with `manifest.json`.
+- **REQ-2091** Restore verification failures MUST return structured errors suitable for CLI and automated workflows.
+
+### 24A.6 Non‑Goals (Informative)
+
+The backup and restore system does **not** include:
+- Fernet key generation, escrow, or recovery.
+- Off‑site storage or synchronization.
+- Backup scheduling policies beyond invoking a durable job.
+- Multi‑instance or multi‑region backup coordination.
+
+### 24A.7 User Data Export (Non-admin)
+
+- **REQ-2092** The system MUST provide a user-scoped data export mechanism that allows exporting all data owned by a specific user.
+- **REQ-2093** User data export MUST be invocable via CLI and API, e.g.: `smartcopilot export user --username <user> --output <path>`.
+- **REQ-2094** A user export MUST include:
+  - All vault pages owned by the user.
+  - User-specific database rows (memories, preferences, usage records).
+  - User-owned project definitions and skill overrides.
+- **REQ-2095** Encrypted provider keys MAY be included but MUST remain encrypted and MUST NOT be decrypted during export.
+- **REQ-2096** User export archives MUST NOT include data belonging to other users or shared-vault content unless explicitly owned by the exporting user.
 
 ---
 
 ## 25. Embedding System
 
 - **REQ-2100** Phase 1 default embedder MUST be `openai/text-embedding-3-small` at 1536 dimensions.
-- **REQ-2101** The `chunks.embedding` column MUST be `vector(1536)`.
+- **REQ-2101** The `chunks.embedding` column MUST use pgvector and MUST match the active embedding model’s configured dimensions. Dimension changes MUST be performed via the embedding migration flow (REQ-2105).
 - **REQ-2102** An embedder version field MUST be stored on each chunk; a backfill job MUST re-embed any chunks whose version differs from the current default.
 - **REQ-2103** Embedding requests MUST be batched (default batch size 64) with retry on transient errors.
 - **REQ-2104** A local fallback embedder MAY be configured for offline operation.
+- **REQ-2105** Embedding migration MUST support dimension changes (1536↔3072↔768) without data loss; migration MUST rebuild HNSW indexes and track progress.
 
 ---
 
@@ -1120,6 +1372,26 @@ Hermes' skills are markdown procedural-memory files (compatible with the `agents
 - **REQ-2221** Prometheus-format metrics MUST be exposed at `/metrics`, including request counts, latencies, embedding counts, job successes/failures, MCP calls per tool.
 - **REQ-2222** `audit_log` MUST be queryable via admin REST.
 
+### 26.4 Data Retention Policies
+- **REQ-2640** The system MUST define default retention periods for operational data.
+- **REQ-2641** Default retention values:
+  - `llm_usage`: 180 days
+  - `audit_log`: 365 days
+  - `operation_log`: 30 days
+- **REQ-2642** Retention values MUST be admin-configurable.
+- **REQ-2643** Expired records MUST be deleted or irreversibly anonymized.
+- **REQ-2644** User-initiated deletion of derived data MUST NOT violate audit-log integrity requirements.
+
+### 26.5 Degraded and Read-Only Modes
+
+- **REQ-2660** The system MUST detect degraded operating conditions, including database unavailability, read-only filesystem, or embedding provider failure.
+- **REQ-2661** When operating in degraded or read-only mode, the system MUST:
+  - allow read-only retrieval from existing indexes
+  - disable page writes, ingestion, and background jobs
+  - continue serving health and capability discovery endpoints
+- **REQ-2662** The current operating mode (`normal | degraded | read_only`) MUST be exposed via health endpoints.
+- **REQ-2663** Attempts to perform disabled operations MUST return a clear, structured error indicating the current mode.
+
 ---
 
 ## 27. Security and Trust Boundary
@@ -1127,7 +1399,7 @@ Hermes' skills are markdown procedural-memory files (compatible with the `agents
 - **REQ-2300** Every service entry point MUST construct an `OperationContext` (Section 9.3) and pass it down to services; services MUST refuse to run without one.
 - **REQ-2301** `remote=true` callers MUST NOT be able to: execute arbitrary shell, write outside the user's vault, read other users' vaults, install or modify system skills, rotate keys, create users, or modify RLS-bypassing rows.
 - **REQ-2302** Slug and filename validation MUST apply to all `remote=true` write paths.
-- **REQ-2303** All admin endpoints MUST enforce `role='admin'` AND a fresh authentication factor (password or admin-scoped MCP token) within the last 60 minutes for destructive operations.
+- **REQ-2303** All admin endpoints MUST enforce `role='admin'` AND a fresh authentication factor (password or admin-scoped MCP token) within the last 60 minutes for destructive operations. The step-up (fresh authentication) mechanism used to satisfy this requirement is defined in Section 8.5.
 - **REQ-2304** Fernet key, MCP token hashes, and password hashes MUST never be logged.
 - **REQ-2305** CORS MUST be deny-by-default; the Electron client (Phase 8) origin will be allowlisted at that time.
 - **REQ-2306** TLS termination is out of scope for the container; deployments MUST front the container with a reverse proxy for HTTP MCP and admin endpoints.
@@ -1167,7 +1439,7 @@ Hermes' skills are markdown procedural-memory files (compatible with the `agents
 
 ### 29.4 Upgrades
 - **REQ-2530** Upgrades MUST run all pending migrations on container start; failed migrations MUST abort the boot.
-- **REQ-2531** A migration MUST be provided to backfill new typed-link columns on first deploy.
+- **REQ-2531** A migration MUST be provided to backfill `enrichment_hash` and backfill `compiled_truth_updated_at` on existing pages on first deploy. Existing `links` rows (with their typed-link columns) require no backfill migration.
 
 ---
 ## 30. UI — Phase 8 (Electron Desktop Client)
@@ -1248,26 +1520,27 @@ Hermes' skills are markdown procedural-memory files (compatible with the `agents
 
 ### 30A.6 Vault (14 endpoints — Phases 1, 2, 3, 4, 5, 7)
 
-| Method | Path                                      | Auth | Phase | Notes                                                                                      |
-| ------ | ----------------------------------------- | ---- | ----- | ------------------------------------------------------------------------------------------ |
-| POST   | `/api/v1/vault/write`                     | JWT  | 1     | Create/update file (raw passthrough to page write)                                         |
-| POST   | `/api/v1/vault/move`                      | JWT  | 3     | Move + update wikilinks                                                                    |
-| POST   | `/api/v1/vault/split`                     | JWT  | 3     | Split into atomic Zettel (Section 30G)                                                     |
-| GET    | `/api/v1/vault/orphans`                   | JWT  | 5     | Orphan pages                                                                               |
-| GET    | `/api/v1/vault/hubs`                      | JWT  | 5     | Most-connected pages                                                                       |
-| GET    | `/api/v1/vault/health`                    | JWT  | 5     | Composite health score (orphan/density/type-coverage/freshness — Section 30D)              |
-| GET    | `/api/v1/vault/graph`                     | JWT  | 5     | Wikilink graph in Cytoscape.js native format (Section 30A.6.1)                             |
-| GET    | `/api/v1/vault/index/events`              | JWT  | 5     | User's recent index events                                                                 |
-| GET    | `/api/v1/vault/links/suggestions/{slug?}` | JWT  | 5     | Link suggestions for a page; omit `{slug}` for vault-wide top suggestions                  |
-| GET    | `/api/v1/vault/index/progress`            | JWT  | 1     | `{active, current, total, eta_seconds}`. Used for status bars and welcome subtitles.       |
-| POST   | `/api/v1/vault/organize`                  | JWT  | 5     | Dry-run reorganisation suggestions                                                         |
-| POST   | `/api/v1/vault/organize/apply`            | JWT  | 5     | Apply organisation plan                                                                    |
-| POST   | `/api/v1/vault/organize/undo`             | JWT  | 5     | Undo last organisation (uses OperationLog)                                                 |
-| POST   | `/api/v1/vault/reindex`                   | JWT  | 2     | Trigger full reindex of current user's namespace. 202 Accepted. Rate-limited: 1/hour/user. |
+| Method | Path                                     | Auth | Phase | Notes                                                                                      |
+| ------ | ---------------------------------------- | ---- | ----- | ------------------------------------------------------------------------------------------ |
+| POST   | `/api/v1/vault/write`                    | JWT  | 1     | Create/update file (raw passthrough to page write)                                         |
+| POST   | `/api/v1/vault/move`                     | JWT  | 3     | Move + update wikilinks                                                                    |
+| POST   | `/api/v1/vault/split`                    | JWT  | 3     | Split into atomic Zettel (Section 30G)                                                     |
+| GET    | `/api/v1/vault/orphans`                  | JWT  | 5     | Orphan pages                                                                               |
+| GET    | `/api/v1/vault/hubs`                     | JWT  | 5     | Most-connected pages                                                                       |
+| GET    | `/api/v1/vault/health`                   | JWT  | 5     | Composite health score (orphan/density/type-coverage/freshness — Section 30D)              |
+| GET    | `/api/v1/vault/graph`                    | JWT  | 5     | Wikilink graph in Cytoscape.js native format (Section 30A.6.1)                             |
+| GET    | `/api/v1/vault/index/events`             | JWT  | 5     | User's recent index events                                                                 |
+| GET    | `/api/v1/vault/links/suggestions/{slug}` | JWT  | 5     | Link suggestions for a specific page (slug required)                                       |
+| GET    | `/api/v1/vault/links/suggestions`        | JWT  | 5     | Vault-wide top link suggestions (no slug)                                                  |
+| GET    | `/api/v1/vault/index/progress`           | JWT  | 1     | `{active, current, total, eta_seconds}`. Used for status bars and welcome subtitles.       |
+| POST   | `/api/v1/vault/organize`                 | JWT  | 5     | Dry-run reorganisation suggestions                                                         |
+| POST   | `/api/v1/vault/organize/apply`           | JWT  | 5     | Apply organisation plan                                                                    |
+| POST   | `/api/v1/vault/organize/undo`            | JWT  | 5     | Undo last organisation (uses OperationLog)                                                 |
+| POST   | `/api/v1/vault/reindex`                  | JWT  | 2     | Trigger full reindex of current user's namespace. 202 Accepted. Rate-limited: 1/hour/user. |
 
 #### 30A.6.1 `GET /api/v1/vault/graph` response schema
 
-Query params: `namespace` (`private`|`shared`|`all`, default `all`), `note_type` (filter, comma-separated), `seed_doc_id` (UUID; ego-graph mode), `max_hops` (default 3, only with seed), `max_nodes` (default 500), `min_links` (default 0, hides isolates).
+Query params: `namespace` (`private`|`shared`|`all`, default `all`), `note_type` (filter, comma-separated), `seed_page_id` (UUID; ego-graph mode), `max_hops` (default 3, only with seed), `max_nodes` (default 500), `min_links` (default 0, hides isolates).
 
 Response body (Cytoscape.js native — passed directly to `cy.add()` without transformation):
 
@@ -1276,7 +1549,7 @@ Response body (Cytoscape.js native — passed directly to `cy.add()` without tra
   "nodes": [
     {
       "data": {
-        "id": "doc-uuid-1",
+        "id": "page-uuid-1",
         "label": "Backpropagation basics",
         "note_type": "permanent",
         "namespace": "private",
@@ -1290,7 +1563,7 @@ Response body (Cytoscape.js native — passed directly to `cy.add()` without tra
     }
   ],
   "edges": [
-    { "data": { "id": "link-uuid-1", "source": "doc-uuid-1", "target": "doc-uuid-2" } }
+    { "data": { "id": "link-uuid-1", "source": "page-uuid-1", "target": "page-uuid-2" } }
   ],
   "meta": {
     "total_nodes": 3847,
@@ -1302,7 +1575,7 @@ Response body (Cytoscape.js native — passed directly to `cy.add()` without tra
 }
 ```
 
-`max_nodes: 500` default keeps Cytoscape.js Canvas renderer responsive (< 1,000 elements). Larger neighbourhoods use `seed_doc_id` for focused exploration.
+`max_nodes: 500` default keeps Cytoscape.js Canvas renderer responsive (< 1,000 elements). Larger neighbourhoods use `seed_page_id` for focused exploration.
 
 ### 30A.7 Memories (6 endpoints — Phase 4)
 
@@ -1341,11 +1614,11 @@ Response body (Cytoscape.js native — passed directly to `cy.add()` without tra
 
 ### 30A.11 Settings (3 endpoints — Phases 1–6)
 
-| Method | Path                     | Auth | Notes                                                                                   |
-| ------ | ------------------------ | ---- | --------------------------------------------------------------------------------------- |
-| GET    | `/api/v1/settings`       | JWT  | Returns user's `user_settings.settings` JSONB plus effective server defaults            |
-| PUT    | `/api/v1/settings`       | JWT  | Replace user settings JSONB. Validates against the documented key schema (Section 22D). |
-| GET    | `/api/v1/settings/modes` | JWT  | List available chat modes (Ask/Write/Research/Focus + custom)                           |
+| Method | Path                     | Auth | Notes                                                                                     |
+| ------ | ------------------------ | ---- | ----------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/settings`       | JWT  | Returns user's `user_settings.settings` JSONB plus effective server defaults              |
+| PUT    | `/api/v1/settings`       | JWT  | Replace user settings JSONB. Validates against the documented key schema (Section 30H.2). |
+| GET    | `/api/v1/settings/modes` | JWT  | List available chat modes (Ask/Write/Research/Focus + custom)                             |
 
 ### 30A.12 Usage (2 endpoints — Phase 6)
 
@@ -1383,14 +1656,20 @@ Response body (Cytoscape.js native — passed directly to `cy.add()` without tra
 | DELETE | `/api/v1/admin/mcp/servers/{name}`           | Admin | Remove an MCP server                                            |
 | POST   | `/api/v1/admin/mcp/servers/{name}/toggle`    | Admin | Enable/disable without removing config                          |
 | POST   | `/api/v1/admin/mcp/servers/{name}/reconnect` | Admin | Force reconnect                                                 |
+| POST   | `/api/v1/admin/maintain/run`                 | Admin | Run brain maintenance on demand                                 |
+| GET    | `/api/v1/admin/maintain/report`              | Admin | Fetch latest maintenance report                                 |
+| GET    | `/api/v1/admin/doctor`                       | Admin | System smoke test                                               |
 
-### 30A.14 Health (3 endpoints — Phase 1)
+> **Note:** MCP OAuth (`POST /mcp/oauth/register`, Phase 7 stub) is documented in REQ-1504B. MCP tool registry endpoints are listed under Admin above (Phase 7).
 
-| Method | Path       | Auth | Notes                                                                                               |
-| ------ | ---------- | ---- | --------------------------------------------------------------------------------------------------- |
-| GET    | `/health`  | None | Lightweight; alias for `/healthz`. Returns `setup_required` flag when no users exist.               |
-| GET    | `/healthz` | None | API process up                                                                                      |
-| GET    | `/readyz`  | None | All subsystems healthy (Postgres, pgvector, scheduler, watchdog, MCP HTTP). Used by load balancers. |
+### 30A.14 Health + Metrics (4 endpoints — Phase 1)
+
+| Method | Path       | Auth  | Notes                                                                                                                |
+| ------ | ---------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/health`  | None  | Lightweight; alias for `/healthz`. Returns `setup_required` flag when no users exist.                                |
+| GET    | `/healthz` | None  | API process up                                                                                                       |
+| GET    | `/readyz`  | None  | All subsystems healthy (Postgres, pgvector, scheduler, watchdog, MCP HTTP). Used by load balancers.                  |
+| GET    | `/metrics` | Admin | Prometheus-format metrics (request counts, latencies, embedding counts, job successes/failures, MCP calls per tool). |
 
 `/health` response body:
 
@@ -1403,10 +1682,16 @@ Response body (Cytoscape.js native — passed directly to `cy.add()` without tra
   "indexing": { "active": false, "current": null, "total": null }
 }
 ```
-
 When `setup_required: true`, the Phase 8 client renders the "Create Admin Account" form variant on the login page; otherwise the standard login form.
 
-### 30A.15 Error response schema (all endpoints)
+### 30A.15 Agent (2 endpoints — Phase 2)
+
+| Method | Path                            | Auth | Notes                                                                          |
+| ------ | ------------------------------- | ---- | ------------------------------------------------------------------------------ |
+| POST   | `/api/v1/agent/approve`         | JWT  | Respond to a pending `tool_confirm` (approve/reject).                          |
+| POST   | `/api/v1/agent/client-response` | JWT  | Client supplies data requested by a `client_request` (e.g. clipboard content). |
+
+### 30A.16 Error response schema (all endpoints)
 
 ```json
 { "detail": "Human-readable error message", "code": "MACHINE_READABLE_CODE" }
@@ -1421,6 +1706,10 @@ When `setup_required: true`, the Phase 8 client renders the "Create Admin Accoun
 | 409  | `CONFLICT`         | Duplicate (e.g., username)                                |
 | 429  | `RATE_LIMITED`     | Per-user rate limit. Body includes `retry_after_seconds`. |
 | 500  | `INTERNAL_ERROR`   | Unexpected server error                                   |
+
+### 30A.17 Capabilities (1 endpoint — Phase 1)
+
+- `GET /api/v1/capabilities` — Returns server capability discovery payload (see Section 10.4).
 
 ---
 
@@ -1441,6 +1730,8 @@ When `setup_required: true`, the Phase 8 client renders the "Create Admin Accoun
 
 **Authentication:** The POST request body MAY include `access_token` as a fallback when header injection on streaming requests is inconvenient. The backend validates the token from either the `Authorization: Bearer` header or the body field before opening the stream.
 
+**Token naming:** `access_jwt` and `access_token` refer to the same JWT access token. For SSE requests, the token MAY be supplied via `Authorization: Bearer <access_jwt>` header or as `access_token` in the request body.
+
 ```
 data: {"type":"status","data":{"description":"Searching knowledge base...","done":false}}
 
@@ -1452,15 +1743,15 @@ data: {"type":"token","data":{"content":" your notes"}}
 data: {"type":"tool_start","data":{"tool":"ragSearch","input":{"query":"neural networks"}}}
 data: {"type":"tool_result","data":{"tool":"ragSearch","elapsed_ms":340,"result_count":5}}
 
-data: {"type":"tool_confirm","data":{"tool":"vaultWrite","input":{"path":"/notes/new.md","content":"..."},"description":"Create new note: new.md","call_id":"uuid"}}
+data: {"type":"tool_confirm","data":{"tool":"put_page","input":{"path":"/notes/new.md","content":"..."},"description":"Create new note: new.md","call_id":"uuid"}}
 
 data: {"type":"client_request","data":{"request_id":"uuid","action":"read_clipboard","max_payload_bytes":5242880}}
 
 data: {"type":"client_request","data":{"request_id":"uuid","action":"open_editor","path":"/notes/example.md"}}
 
-data: {"type":"notification","data":{"title":"3 orphan notes detected","body":"Run cleanOrphans to review.","severity":"info"}}
+data: {"type":"notification","data":{"title":"3 orphan notes detected","body":"Run maintain_run(kind=cleanup_orphans) to review.","severity":"info"}}
 
-data: {"type":"done","data":{"usage":{"prompt_tokens":1200,"completion_tokens":450,"cost_usd":0.0034},"title":"Auto-generated title","suggested_tasks":[{"title":"Run orphan cleanup","action":"cleanOrphans"}]}}
+data: {"type":"done","data":{"usage":{"prompt_tokens":1200,"completion_tokens":450,"cost_usd":0.0034},"title":"Auto-generated title","suggested_tasks":[{"title":"Run orphan cleanup","action":"maintain_run","kind":"cleanup_orphans"}]}}
 ```
 
 ### 30B.3 Event types
@@ -1491,7 +1782,7 @@ Citation markers (`[1]`, `[2]`) are scoped per-message. Each assistant response 
 
 ## 30C. Agent System — 22 Tools (detailed)
 
-> **Companion to Section 17.** Section 17 enumerates the 22 tools and the brain-first prompt. This section adds: auto-approve vs confirmation classification, the captureFromClipboard cooperative protocol, per-mode tool availability, and proactive-mode behaviour.
+> **Companion to Section 17.** Section 17 enumerates the 22 tools and the brain-first prompt. This section adds: auto-approve vs confirmation classification, the clipboard-ingest cooperative protocol, per-mode tool availability, and proactive-mode behaviour.
 
 ### 30C.1 Tool classification
 
@@ -1529,12 +1820,14 @@ Citation markers (`[1]`, `[2]`) are scoped per-message. Each assistant response 
 
 **Why some apparently-read-only operations require confirmation:** `enrich_entity` and `recipe_run` consume paid LLM credits and may make external network requests. `skill_run` and `jobs_submit` are general-purpose; they may invoke any combination of read and write operations. `maintain_run` audits and may auto-fix repairable defects.
 
-### 30C.2 captureFromClipboard cooperative protocol
+### 30C.2 Clipboard-ingest cooperative protocol
+
+**Note:** `captureFromClipboard` is **not** a standalone MCP tool — it is an SSE-mediated subroutine invoked by the `ingest` tool. The client cooperation described here applies when ingest detects clipboard content and needs the Phase 8 client to read and sanitise it before the agent confirms the write.
 
 A read tool (technically auto-approve, but requires client cooperation):
 
 ```
-1. Agent calls captureFromClipboard()
+1. Agent calls ingest() with clipboard content or image reference
 2. Backend emits SSE: {"type":"client_request","data":{"request_id":"uuid","action":"read_clipboard"}}
 3. Client (Phase 8) reads clipboard, normalises:
    - Plain text: trim, normalise line endings, truncate 500 KB
@@ -1543,12 +1836,13 @@ A read tool (technically auto-approve, but requires client cooperation):
    - Image:      resize if > 4096 px, compress ≤ 5 MB PNG, base64, strip EXIF
    - File path:  text only — client does NOT read file contents
 4. Client POSTs to /api/v1/agent/client-response with the request_id
-5. Server re-sanitises via nh3 (defence in depth — Section 30E), processes by type
+5. Server re-sanitises via nh3 (defence in depth — Section 30F), processes by type
 6. Agent requests confirmation (tool_confirm) before creating any page
 7. Timeout: 10 seconds → error + "Try pasting into chat instead"
 ```
 
-Pre-Phase-8, `captureFromClipboard` returns `{ "error": "no_client_capability" }` when invoked from any non-Electron client (Claude Desktop, Hermes, generic MCP).
+Pre-Phase-8, the `ingest` tool returns `{ "error": "no_client_capability" }` when clipboard capture is needed and no Phase 8 client is connected.
+- **REQ-2803A** When a client capability required by `client_request` is unavailable (no Phase 8 client connected), the server MUST return `capability_missing` and the agent/client MUST fall back to requesting the data directly from the user (e.g., "paste the content here").
 
 ### 30C.3 Per-mode tool availability (hardcoded v1.0)
 
@@ -1662,11 +1956,11 @@ The Zettelkasten model in Smart Copilot rests on three page types — fleeting, 
 ### 30E.4 Fleeting page expiry
 
 - **REQ-2790** Fleeting pages whose `created_at` is older than `fleeting_expiry_days` (default 30) MUST be moved to the archive folder by the reconciler during its periodic run.
-- **REQ-2791** The page's `note_type` frontmatter MUST be updated to `archived_fleeting`; the `pages` row's `type` column MUST be updated accordingly.
+- **REQ-2791** The page's `note_type` frontmatter MUST be updated to `archived_fleeting`; the database `pages.note_type` column MUST be updated accordingly.
 - **REQ-2792** `archived_fleeting` pages MUST be removed from all RAG indexes (no chunks, no embeddings) but MUST remain on disk in the archive folder.
 - **REQ-2793** The file move MUST be recorded in the operation log for undo support.
 - **REQ-2794** The reconciler MUST process expiry once per `vault.reconciliation_interval_hours` (default 6 hours).
-- **REQ-2795** Files MUST NEVER be auto-deleted — only explicit user action or the `cleanOrphans` agent tool removes files permanently.
+- **REQ-2795** Files MUST NEVER be auto-deleted — only explicit user action or the `maintain_run(kind=cleanup_orphans)` tool removes files permanently.
 
 ---
 
@@ -1737,7 +2031,7 @@ MCP-supplied content      →                     → MCP → nh3 (server) → m
 
 ### 30G.1 Note-type gating
 
-The indexer checks `pages.type` before chunking. Types `archived_fleeting` and `skill` skip the enrich → chunk → embed pipeline entirely — the `pages` row is created/updated (with frontmatter, path, content_hash) but no `chunks` rows are produced. All other types proceed through the full pipeline.
+The indexer checks `pages.note_type` before chunking. Note types `archived_fleeting` and `skill` skip the enrich → chunk → embed pipeline entirely — the pages row is created/updated (with frontmatter, path, content_hash) but no chunks rows are produced. All other note types proceed through the full pipeline.
 
 ### 30G.2 Chunking
 
@@ -1763,7 +2057,7 @@ Each chunk receives the same contextual enrichment prefix. For long notes, chunk
 
 ### 30G.3 Cascading re-enrichment
 
-`pages.content_hash` is xxhash (XXH64) of the raw file bytes (full file including frontmatter YAML), stored as 16-character hex. `pages.enrichment_hash` is xxhash (XXH64) of the concatenated enrichment inputs (`title + folder + tags + sorted(backlink_titles) + sorted(outlink_titles)`), stored as 16-character hex.
+`pages.content_hash` is xxhash (XXH64) of the raw file bytes (full file including frontmatter YAML), stored as 16-character hex. `pages.enrichment_hash` is xxhash (XXH64) of the concatenated enrichment inputs (`title + folder + tags + sorted(backlink_titles) + sorted(outlink_titles)`), stored as 16-character hex. This definition is normative for pages.content_hash throughout the system.
 
 **Flow on file change:**
 1. Compute `content_hash`.
@@ -1795,7 +2089,7 @@ The complete hybrid search query, fusing vector + BM25 + typed-graph reachabilit
 
 When `$5` is NULL, the graph CTE returns zero rows and only vector + BM25 contribute. This happens when no page is open in the editor, the user is in a new conversation with no context, or the mode does not provide a seed.
 
-**RRF k = 60:** standard from Cormack et al. 2009. Higher k reduces the impact of rank-position differences; lower k amplifies them. 60 is the documented safe default.
+**RRF k = 60:** standard from Cormack et al. 2009. Higher k reduces the impact of rank-position differences; lower k amplifies them. 60 is the documented safe default. *(See DEC-001 in Appendix D for rationale and testing implications.)*
 
 ---
 
@@ -1827,7 +2121,6 @@ vault:
     yellow: 0.5
 
 rag:
-  hybrid_weights: { vector: 0.5, bm25: 0.3, graph: 0.2 }
   context_enrichment: true
   top_k: 10
   graph_max_hops: 3
@@ -1861,7 +2154,7 @@ llm:
     - { id: openai/text-embedding-3-small, display_name: OpenAI Embedding Small, dimensions: 1536 }
     - { id: openai/text-embedding-3-large, display_name: OpenAI Embedding Large, dimensions: 3072 }
     - { id: ollama/nomic-embed-text, display_name: Nomic Embed (local), dimensions: 768 }
-  local_endpoints: []
+  local_endpoints: []  # Ollama or OpenAI-compatible servers; { name, base_url, model_prefix }
 
 zettelkasten:
   note_types:
@@ -1891,7 +2184,7 @@ agent:
   skill_cache_ttl_seconds: 300
 
 memory:
-  auto_extract: true
+  auto_extract: true  # When true, on every /conversations PATCH (user sends a message) the server auto-extracts factual claims, preferences, and decisions into the memories table via the memory/extractor.py module. Gated by the user's memory.auto_extract config.
   max_memories_per_user: 500
   max_active_memories: 200
   dream:
@@ -2232,7 +2525,8 @@ server/
     │   └── meeting.py                # transcripts
     ├── enrich/
     │   ├── tier.py                   # Tier 1/2/3 routing
-    │   └── alias.py                  # alias dedup
+    │   ├── alias.py                  # alias dedup
+    │   └── provider.py               # LinkedIn-style external lookups (delegates to skills for actual lookup logic)
     ├── websearch/
     │   ├── engine.py
     │   ├── duckduckgo.py
@@ -2300,11 +2594,11 @@ clients/desktop/
     │   ├── components/
     │   │   ├── chat/
     │   │   ├── editor/
-    │   │   ├── floating/
-    │   │   ├── intelligence/
+    │   │   ├── floating/              # QuickChat widget, notification popups
+    │   │   ├── intelligence/          # Vault intelligence widgets (orphan counts, hub detection, suggestion chips)
     │   │   ├── sidebar/              # VaultSidebar, TreeView, FileContextMenu
     │   │   ├── admin/
-    │   │   ├── dashboard/
+    │   │   ├── dashboard/            # DashboardView widgets (usage stats, vault health, cost breakdowns)
     │   │   ├── memory/
     │   │   └── shared/
     │   ├── modals/
@@ -2426,7 +2720,7 @@ clients/desktop/
 | 1     | Auth works           | Register → login → JWT → authenticated request succeeds                                                     |
 | 1     | Watcher detects      | Create `.md` file → watcher event logged within 5 s                                                         |
 | 1     | MCP stdio works      | Claude Code connects via stdio, lists tools, calls `brain_search`                                           |
-| 1     | MCP HTTP works       | curl `POST /mcp` with bearer token → tool list returned                                                     |
+| 1     | MCP HTTP works       | `curl POST http://localhost:8787/mcp -H "Authorization: Bearer ..."` → JSON-RPC tool list returned          |
 | 2     | RAG with citations   | Chat message → hybrid search → answer cites retrieved pages                                                 |
 | 2     | Auto-link extraction | Page write with `[[Foo]]` → row in `links` table within 1 s, no LLM call                                    |
 | 2     | Hybrid beats vector  | Fixture corpus benchmark: hybrid Precision@5 > vector-only                                                  |
@@ -2554,6 +2848,82 @@ clients/desktop/
 
 ---
 
+## 30P. AI Agent Implementation Guidance
+
+> **FOR AI AGENTS:** This section provides pragmatic guidance for implementing this PRD. Read this before starting any phase.
+
+### 30P.1 Start with the Skeleton
+
+Before writing business logic:
+
+1. **Set up the test infrastructure** (Appendix E): real PostgreSQL test db, `conftest.py` fixtures, RLS isolation tests.
+2. **Add the file structure** (Section 30J): empty `__init__.py` files for every module.
+3. **Run `smartcopilot doctor`** (REQ-2200) as the first smoke test.
+4. **Verify OpenAPI spec auto-generates** (REQ-2700) from route definitions.
+
+### 30P.2 Implementation Order
+
+Within each phase, implement in this order to respect dependencies:
+
+| Order | Module                              | Why First                                                 |
+| ----- | ----------------------------------- | --------------------------------------------------------- |
+| 1     | `auth/` + `dependencies.py`         | All other modules need `get_current_user` and RLS context |
+| 2     | `models/` + migrations              | Schema must exist before any service uses it              |
+| 3     | `services/`                         | Transport-agnostic core; tested without FastAPI overhead  |
+| 4     | `routes/` + `mcp/server.py`         | Thin wrappers around services                             |
+| 5     | `vault/` (watcher, parser, indexer) | Depends on schema + services                              |
+| 6     | `rag/` + `llm/`                     | Depends on schema + services + vault                      |
+| 7     | `skills/` + `agent/`                | Top of the stack; uses everything below                   |
+
+### 30P.3 Every Service Function Must
+
+```python
+async def some_service_function(ctx: OperationContext, ...) -> SomeResponse:
+    # 1. Assert OperationContext is present
+    if ctx is None:
+        raise ValueError("OperationContext required")
+    
+    # 2. Assert trust boundary if write operation
+    if write_operation and ctx.remote:
+        raise PermissionError("remote=true callers cannot write")
+    
+    # 3. Check RLS context is set (for unit tests)
+    # assert ctx.user_id is not None
+    
+    # 4. Do work
+    
+    # 5. Log to audit_log if mutation
+    if mutation:
+        await audit_log(ctx, action="some_action", ...)
+```
+
+### 30P.4 PR Checklist
+
+Before submitting a PR:
+
+- [ ] All tests pass: `pytest server/app/tests/ -v`
+- [ ] Drift test passes: `test_tool_rest_parity` finds no mismatches
+- [ ] OpenAPI spec updated: `docs/openapi.json` regenerated
+- [ ] RLS isolation test confirms user A cannot read user B's data
+- [ ] `smartcopilot doctor` passes
+- [ ] New requirements have corresponding test in `test_*.py`
+- [ ] No `encrypted_key` in any Pydantic response schema
+- [ ] No Fernet key or token hash in logs
+- [ ] Code formatted with Ruff: `ruff format server/`
+- [ ] Lint passes: `ruff check server/`
+
+### 30P.5 When Requirements Conflict
+
+| Conflict                 | Resolution Rule                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| PRD vs. `ui-spec.md`     | PRD wins for data contracts and API bindings; `ui-spec.md` wins for visual/interaction decisions |
+| Two REQs contradict      | Earlier REQ (lower number) wins within same phase; later phase REQ wins across phases            |
+| REQ vs. test             | Test reflects actual behavior; file an issue if REQ is wrong                                     |
+| Section vs. Appendix     | Appendix provides context; Section is normative                                                  |
+| Section 5 vs. Section 5A | Section 5 is normative (MUST/SHOULD); Section 5A is explanatory                                  |
+
+---
+
 ## 31. Glossary
 
 - **Auto-link extraction:** Zero-LLM, deterministic extraction of typed links from page bodies on every write.
@@ -2573,6 +2943,12 @@ clients/desktop/
 - **Typed link:** A directed edge with a semantic type (`works_at`, `invested_in`, etc.) between a page and an entity.
 - **Vault:** A markdown directory tree owned by a user (private) or shared.
 - **Wikilink:** `[[type/slug]]` reference in markdown body.
+- **`note_type`:** The Zettelkasten lifecycle kind of a page: `fleeting` (raw capture), `literature` (source notes), `permanent` (atomic Zettel), `archived_fleeting` (transferred from fleeting), `skill` (procedure), `moc` (map of content hub). Separate from `type` (dossier kind).
+- **`enrichment_hash`:** xxhash64 of concatenated enrichment inputs; compared on write to decide whether re-enrichment is needed.
+- **`content_hash`:** XXH64 (xxhash64) of the raw file bytes (frontmatter YAML + body) as stored on disk; represented as 16-character hex. Used to detect any change requiring re-parse + re-index.
+- **`archived_fleeting`:** A `note_type` value indicating a page was promoted from fleeting capture to permanent storage.
+- **`safeStorage`:** Electron API for OS-native encrypted credential storage (used for the desktop app's encrypted token store).
+- **`gbrain`:** The legacy maintain pattern from Smart Copilot's predecessor: a nightly skill that runs `[stale → orphans → dead-link → citations → backlinks → tags]` in sequence per page, ensuring the brain stays consistent.
 
 ---
 
@@ -2652,8 +3028,379 @@ CREATE POLICY pages_system_full ON pages
   FOR ALL USING (current_setting('app.current_user_id')::uuid = '00000000-0000-0000-0000-000000000001'::uuid);
 ```
 
-Equivalent policies MUST be defined for: `chunks`, `entities`, `links`, `timeline_events`, `tags`, `page_tags`, `mcp_tokens`, `provider_keys`, `sessions`, `recipes`, `skills` (where namespace='user'), and `eval_candidates`. The `users` and `audit_log` tables MUST allow each user to read their own row, and admins to read all rows.
+Equivalent policies MUST be defined for: `chunks`, `entities`, `links`, `timeline_events`, `tags`, `page_tags`, `mcp_tokens`, `provider_keys`, `sessions`, `recipes`, `skills` (where namespace='user'), `eval_candidates`, `memories`, `dream_audit_log`, `projects`, `operation_log`, `llm_usage`, `index_events`, `user_settings`, `conversations`, `messages`, `system_config`, `mcp_servers`. The `users` and `audit_log` tables MUST allow each user to read their own row, and admins to read all rows. System-only tables (`system_config`) MUST have a policy carves-out for the system maintenance UUID.
 
 ---
 
-*End of Smart Copilot PRD v26.05.0 (DRAFT v0.5.0).*
+## Appendix D — Decision Log
+
+> **FOR AI AGENTS:** This log documents the rationale behind non-obvious design decisions. Knowing *why* helps you make correct judgment calls on edge cases not explicitly covered by requirements.
+
+### D.1 Architecture Decisions
+
+| ID      | Decision                                                           | Rationale                                                                                                                                                                                       | Consequences                                                                                                                                           |
+| ------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| DEC-001 | **RRF k = 60**                                                     | Standard from Cormack et al. 2009. Higher k reduces the impact of rank-position differences; lower k amplifies them. 60 is the documented safe default balancing recall and precision.          | If you change k, re-run the fixture benchmark (REQ-2404) and verify Precision@5 improves or holds.                                                     |
+| DEC-002 | **Slug allowlist: `^[a-z0-9][a-z0-9\-]{0,127}$`**                  | Prevents RTL override attacks, XSS via wikilinks, and path traversal. Alphanumeric + hyphen is sufficient for Zettelkasten slugs.                                                               | Remote callers with non-matching slugs receive `VALIDATION_ERROR`. System callers bypass this check.                                                   |
+| DEC-003 | **750ms debounce (REQ-912)**                                       | Balances responsiveness vs. keystroke storms during rapid editing. Obsidian-style editing typically produces events every 200-400ms.                                                            | Watcher coalesces events; if you lower below 500ms, expect re-index thrashing on long documents.                                                       |
+| DEC-004 | **"Human always wins" conflict resolution (REQ-920)**              | Users editing their vault locally (Obsidian, etc.) are the source of truth. The API is an intelligent agent layer, not the editor.                                                              | DB is updated to match disk on conflict. API writes use atomic temp-file + rename to avoid partial writes.                                             |
+| DEC-005 | **LiteLLM as library, not proxy**                                  | In-process import avoids network hop, reduces latency, and simplifies key management (one encrypt/decrypt per request vs. proxy token exchange).                                                | LiteLLM version must be pinned; breaking provider changes require container rebuild.                                                                   |
+| DEC-006 | **APScheduler + SQLAlchemyJobStore (REQ-1900)**                    | Single PostgreSQL instance means one job store. External brokers (Redis/Celery) add operational complexity and failure modes. APScheduler survives container restarts via persistent job store. | Job serialization must handle UUIDs, JSONB, and circular references. Avoid lambda/cell job args.                                                       |
+| DEC-007 | ** Fernet encryption for provider keys**                           | Fernet (AES-128-CBC + HMAC) provides authenticated encryption. Master key from env var is industry-standard pattern (12-factor apps).                                                           | Key rotation requires re-encrypting all stored keys; implement via `smartcopilot admin rotate-fernet` (REQ-2011).                                      |
+| DEC-008 | **argon's memory=64MiB, iterations≥3**                             | OWASP 2023 recommendation for password hashing. Balances security vs. login latency (≤200ms per auth).                                                                                          | Adjust only if login latency exceeds NFR target; changing requires re-hashing existing passwords on next login.                                        |
+| DEC-009 | **HNSW cosine vs. inner product**                                  | Cosine distance is embedding-model-agnostic (works with normalized and non-normalized embeddings). Inner product requires normalized embeddings for correctness.                                | Phase 1 uses `openai/text-embedding-3-small` which produces normalized embeddings — cosine and inner product produce identical results for this model. |
+| DEC-010 | **watchdog thread → asyncio handoff via `call_soon_threadsafe()`** | watchdog runs in a separate thread; asyncio event loop runs in the main thread. Direct queue submission from watchdog thread would race with asyncio's thread-safety guarantees.                | Never call async code directly from the watchdog thread. Always use `loop.call_soon_threadsafe()`.                                                     |
+| DEC-011 | **compile-truth boost +0.15 to RRF score**                         | Empirically determined: boosts above-the-fold content (the "current state") without dominating vector/BM25 signals. 0.15 is a 15% rank boost at position 1.                                     | Tune via `user_settings.settings.rag.compiled_truth_boost` (if implemented). Default 0.15 tested against ~1000 queries.                                |
+| DEC-012 | **Backlink boost: `min(0.10, in_degree/100)`**                     | Caps contribution at 0.10 to prevent hub pages (highly connected) from dominating search. In-degree is uncapped; capping normalizes.                                                            | If hub pages are under-ranked, increase cap. If hub pages dominate, decrease cap or increase denominator.                                              |
+| DEC-013 | **Single chunk threshold: 600 tokens**                             | Covers ~90% of Zettelkasten atomic notes. Above this, recursive splitting with markdown-aware separators provides better retrieval granularity.                                                 | Adjust via `rag.chunking.single_chunk_threshold`. Raising to 1000 increases single-chunk coverage but reduces retrieval precision for long notes.      |
+| DEC-014 | **Memory Dream uses cheapest tier**                                | Consolidation is bulk summarization, not creative synthesis. Using `gpt-4o-mini` or `claude-haiku` reduces cost by ~10x vs. balanced tier.                                                      | Model must support JSON mode for structured consolidation output.                                                                                      |
+
+### D.2 Operational Decisions
+
+| ID      | Decision                                         | Rationale                                                                                                                                                                                        | Consequences                                                                                                                                                                            |
+| ------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DEC-015 | **APScheduler in dedicated supervisord program** | Running APScheduler inside uvicorn workers causes duplicate job execution. Workers share no memory, and GIL doesn't serialize thread access to APScheduler internals.                            | Dedicated program is single-threaded; advisory locks (DEC-016) are the fallback if you ever split APScheduler across processes.                                                         |
+| DEC-016 | **PostgreSQL advisory locks for concurrency**    | Advisory locks (`pg_try_advisory_lock`) are server-side, non-blocking, and survive connection drops.比 file locks or Redis more appropriate since Postgres is already the primary store.         | Lock key must be deterministic (e.g., `hashtext('dream')`). Lock is released on connection close; long-running jobs must hold the lock explicitly.                                      |
+| DEC-017 | **First user is admin (REQ-2520)**               | Eliminates bootstrapping complexity. The bootstrap token is printed to stderr (not stored) so it's single-use by design.                                                                         | If no users exist, `/health` returns `setup_required: true`. Phase 8 client renders "Create Admin" form. Registration is disabled after first user (unless `allow_registration: true`). |
+| DEC-018 | **SSE for chat, WebSocket for real-time**        | SSE is unidirectional (server→client) — ideal for streaming tokens. WebSocket is bidirectional — needed for indexing progress, job status, notifications. Mixing protocols is standard practice. | Reverse proxies (nginx, Caddy) need config for SSE streaming (disable buffering). SSE is not resumable; WebSocket reconnect uses exponential backoff.                                   |
+| DEC-019 | **Claude Desktop stdio via mcp-remote shim**     | Claude Desktop does not natively support Streamable HTTP in v26.05. The `mcp-remote` npm package bridges HTTP → stdio.                                                                           | When Claude Desktop adds native HTTP transport, the shim becomes optional. Document both patterns in REQ-1501E.                                                                         |
+| DEC-020 | **Hermes skill pack is client-side only**        | Smart Copilot skills execute server-side against the database/vault. Hermes skills instruct the Hermes LLM when to call which MCP tools. Mixing concerns would create circular dependencies.     | REQ-1499A through REQ-1499D define the layer contract. If Hermes skills replicate server logic, `smartcopilot client validate hermes` detects the breach.                               |
+
+### D.3 Rejected Alternatives
+
+| ID      | Rejected Option                  | Reason for Rejection                                                                                                                             |
+| ------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| REJ-001 | Redis/Celery for job queue       | Adds external broker; violates single-container P2. APScheduler + SQLAlchemyJobStore is sufficient for 3-10 users.                               |
+| REJ-002 | LiteLLM as proxy service         | Network hop + additional failure mode. In-process import is simpler and lower latency.                                                           |
+| REJ-003 | SQLite / PGLite as primary store | No pgvector support; ACID compliance concerns at scale. PostgreSQL is the primary store requirement (REQ-105, REQ-106, REQ-107).                 |
+| REJ-004 | LLM-based link extraction        | Expensive (one LLM call per page write), non-deterministic, slow. Zero-LLM deterministic extraction is faster, cheaper, and reproducible.        |
+| REJ-005 | Custom RBAC beyond admin/user    | Role explosion leads to complexity. Two roles are sufficient for homelab use cases. Admin can delegate via per-user MCP tokens.                  |
+| REJ-006 | Real-time collaborative editing  | CRDT or OT implementation complexity unjustified for 3-10 user homelab. Users edit independently.                                                |
+| REJ-007 | Mobile client                    | Out of scope for v1.0. MCP-first design means any MCP-capable mobile client (future) can connect.                                                |
+| REJ-008 | VS Code extension                | Phase 8 (Electron) is the primary UI. VS Code extension would be a Phase 9+ consideration. MCP-first means Claude Code on desktop already works. |
+
+---
+
+## Appendix E — Test Skeleton
+
+> **FOR AI AGENTS:** This appendix provides the canonical test file structure. Every module listed in Section 30J.1 should have a corresponding test file. Tests run against a real PostgreSQL test database (REQ-2400); mocking the DB layer is prohibited for integration tests.
+
+### E.1 Test Directory Structure
+
+```
+server/app/tests/
+├── unit/
+│   ├── test_link_extractor.py          # [TEST] REQ-1160, REQ-1161
+│   ├── test_chunker.py                # [TEST] REQ-1230, REQ-1231
+│   ├── test_intent_classifier.py      # [TEST] REQ-1200
+│   ├── test_fernet.py                # [TEST] REQ-2010
+│   ├── test_password.py             # [TEST] REQ-400
+│   ├── test_slug_validation.py      # [TEST] REQ-523, REQ-1020
+│   └── test_resolver.py             # [TEST] REQ-1410, REQ-1411
+├── integration/
+│   ├── test_auth.py                 # [TEST] REQ-400–402, REQ-584
+│   ├── test_pages.py                # [TEST] REQ-1000–1025
+│   ├── test_search.py              # [TEST] REQ-1200–1209
+│   ├── test_mcp_stdio.py          # [TEST] REQ-500, REQ-603
+│   ├── test_mcp_http.py           # [TEST] REQ-501, REQ-603
+│   ├── test_websocket.py          # [TEST] REQ-610, REQ-2760–2765
+│   ├── test_skills.py            # [TEST] REQ-1400–1412
+│   ├── test_ingest.py           # [TEST] REQ-1500–1543
+│   └── test_dream.py          # [TEST] REQ-1800–1820
+├── rls/
+│   ├── test_rls_isolation.py   # [TEST] REQ-330, REQ-331, REQ-571
+│   └── test_rls_context_leak.py # [TEST] REQ-340, REQ-571
+├── drift/
+│   ├── test_tool_rest_parity.py  # [TEST] REQ-2406
+│   └── test_openapi_contract.py  # [TEST] REQ-2700–2704
+├── fixtures/
+│   ├── corpus/                   # ~1000 synthetic pages for benchmark (REQ-2404)
+│   ├── corpus.yaml               # Fixture definition: page slugs, types, expected links
+│   └── test_vault/              # Minimal vault for integration tests
+└── conftest.py                  # [TEST] Shared fixtures: test_db, test_user, test_ctx
+```
+
+### E.2 Canonical Test Fixtures
+
+```python
+# conftest.py — shared fixtures
+import pytest
+import asyncio
+from asyncpg import create_pool, connect
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from app.models import User, Vault
+
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+@pytest.fixture(scope="session")
+async def test_db():
+    """Create ephemeral test database. REQ-2400: real PostgreSQL, no mocking."""
+    # Set up DATABASE_URL for test db (e.g., created via postgres fixture)
+    engine = create_async_engine(os.environ["TEST_DATABASE_URL"])
+    yield engine
+    await engine.dispose()
+
+@pytest.fixture
+async def test_user(test_db):
+    """Create test user in isolated schema."""
+    # Creates user with hashed password, returns (user, plaintext_password)
+    pass
+
+@pytest.fixture
+def test_ctx(test_user):
+    """OperationContext for unit tests. REQ-520."""
+    from app.auth.middleware import OperationContext
+    return OperationContext(
+        user_id=test_user.id,
+        transport="test",
+        remote=False,
+        client_name="test-client",
+        request_id=uuid.uuid4(),
+    )
+```
+
+### E.3 Test Naming Convention
+
+| Pattern                            | Meaning                                 |
+| ---------------------------------- | --------------------------------------- |
+| `test_<module>_<requirement>`      | Unit test for specific requirement      |
+| `test_<feature>_<happy_path>`      | Integration test for feature end-to-end |
+| `test_rls_<table>_<operation>`     | RLS isolation test                      |
+| `test_mcp_<transport>_<tool_name>` | MCP tool integration test               |
+| `test_fixtures_<corpus_name>`      | Fixture corpus validation               |
+
+### E.4 Required Drift Tests
+
+> **REQ-2406:** Every MCP tool MUST have a corresponding REST endpoint and vice versa.
+
+```python
+def test_tool_rest_parity():
+    """Verify MCP tool surface matches REST endpoint surface."""
+    mcp_tools = discover_mcp_tools()  # Parse server/app/mcp/tools.py
+    rest_endpoints = discover_rest_endpoints()  # Parse server/app/routes/
+    
+    # Tools not in REST:
+    extra_tools = mcp_tools - {tool_to_endpoint(t) for t in mcp_tools}
+    assert not extra_tools, f"MCP tools without REST endpoints: {extra_tools}"
+    
+    # REST not in MCP:
+    extra_routes = rest_endpoints - {endpoint_to_tool(r) for r in rest_endpoints}
+    assert not extra_routes, f"REST endpoints without MCP tools: {extra_routes}"
+```
+
+### E.5 RLS Isolation Test Pattern
+
+> **REQ-2401:** Assert user A cannot read user B's data via any service path.
+
+```python
+@pytest.mark.asyncio
+async def test_rls_pages_isolation(test_db, test_user_a, test_user_b):
+    """REQ-571: User A cannot read User B's private vault pages."""
+    async with test_db.connect() as conn:
+        # Set user A's context
+        await conn.execute("SET app.current_user_id = %s", str(test_user_a.id))
+        try:
+            result = await conn.fetchrows(
+                "SELECT * FROM pages WHERE vault_id = %s",
+                str(test_user_b.private_vault.id),
+            )
+            assert len(result) == 0, "User A should not see User B's private pages"
+        finally:
+            await conn.execute("RESET app.current_user_id")
+
+@pytest.mark.asyncio
+async def test_rls_context_not_leaked(test_db, test_user):
+    """REQ-571: Exiting request scope should not leak session GUC."""
+    async with test_db.connect() as conn:
+        await conn.execute("SET app.current_user_id = %s", str(test_user.id))
+        # Simulate request completion
+        await conn.execute("RESET app.current_user_id")
+        # Verify GUC is cleared (no finally block needed if this passes)
+        result = await conn.fetchval("SHOW app.current_user_id")
+        assert result == "", f"GUC leaked: {result}"
+```
+
+### E.6 Auto-Link Extraction Test Coverage
+
+> **REQ-1160:** Unit tests for code-fence stripping, within-page dedup, stale-link reconciliation, multi-type links, each typed-inference signal.
+
+```python
+# test_link_extractor.py
+def test_strips_code_fences():
+    """REQ-1160: Code fences must not produce false-positive links."""
+    content = """
+    See [[Person/jane]] for details.
+    ```python
+    links = extract_links('See [[Person/jane]] inside code')
+    ```
+    """
+    links = extract_links(content)
+    assert len(links) == 0, "Links inside code fences should be stripped"
+
+def test_within_page_dedup():
+    """REQ-1160: Multiple mentions of same target collapse to one link."""
+    content = "Alice [[Person/alice]] and [[Person/alice]] again."
+    links = extract_links(content)
+    targets = [l["target"] for l in links]
+    assert targets.count("Person/alice") == 1
+
+def test_typed_inference_from_section_header():
+    """REQ-1160: Section header '## Investments' infers type 'invested_in'."""
+    content = """
+    ## Investments
+    We backed [[Company/acme]] in 2023.
+    """
+    links = extract_links(content)
+    assert any(l["link_type"] == "invested_in" for l in links)
+
+def test_multi_type_links():
+    """REQ-1160: Same target may have multiple link types."""
+    content = """
+    ## Investments
+    Jane [[Person/jane]] invested in [[Company/acme]].
+    ## Advisory
+    Jane [[Person/jane]] advises [[Company/acme]].
+    """
+    links = extract_links(content)
+    jane_acme = [l for l in links if l["target"] == "Company/acme" and l["source"] == "Person/jane"]
+    link_types = {l["link_type"] for l in jane_acme}
+    assert "invested_in" in link_types
+    assert "advises" in link_types
+```
+
+### E.7 Phase Acceptance Test Mapping
+
+| Phase | Gate                 | Test File                                                     | Test Name           |
+| ----- | -------------------- | ------------------------------------------------------------- | ------------------- |
+| 1     | Container starts     | N/A                                                           | Manual `docker run` |
+| 1     | Auth works           | `test_auth.py::test_register_creates_admin`                   | [TEST] REQ-400      |
+| 1     | Watcher detects      | `test_vault.py::test_watcher_detects_file_change`             | [TEST] REQ-203      |
+| 1     | MCP stdio works      | `test_mcp_stdio.py::test_stdio_lists_and_calls_tools`         | [TEST] REQ-500      |
+| 1     | MCP HTTP works       | `test_mcp_http.py::test_http_returns_tool_list`               | [TEST] REQ-501      |
+| 2     | RAG with citations   | `test_search.py::test_hybrid_search_returns_citations`        | [TEST] REQ-1221     |
+| 2     | Auto-link extraction | `test_link_extractor.py::test_extracts_typed_links`           | [TEST] REQ-1100     |
+| 2     | Hybrid beats vector  | `test_search.py::test_hybrid_precision_above_baseline`        | [TEST] REQ-2404     |
+| 3     | Skills runtime       | `test_skills.py::test_resolver_matches_and_runs`              | [TEST] REQ-1410     |
+| 3     | Meeting ingest       | `test_ingest.py::test_meeting_creates_attendee_pages`         | [TEST] REQ-1520     |
+| 4     | Dream runs           | `test_dream.py::test_dream_consolidates_memories`             | [TEST] REQ-1800     |
+| 5     | Web search           | `test_websearch.py::test_returns_ranked_results`              | [TEST] REQ-2720     |
+| 6     | Admin user CRUD      | `test_admin.py::test_admin_creates_and_deletes_user`          | [TEST] REQ-2730     |
+| 7     | MCP server registry  | `test_mcp_registry.py::test_external_server_tools_discovered` | [TEST] REQ-2740     |
+| 8     | (Deferred)           |                                                               |                     |
+
+---
+
+## Appendix F — Common Pitfalls
+
+> **FOR AI AGENTS:** These are known failure modes that have burned real implementations. Read before starting each module.
+
+### F.1 Database & RLS
+
+| Pitfall                                | Symptom                                                                   | Fix                                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **GUC leak across pooled connections** | User A sees User B's private pages after a request                        | Always `RESET app.current_user_id` in `finally:` block. Add `test_rls_context_not_leaked` to CI.                  |
+| **Connection pool inherits SET**       | RLS silently broken after connection reuse                                | `pool.acquire()` returns a fresh connection; `acquire().connection` may not. Test with multiple concurrent users. |
+| **Async session + sync psycopg2 mix**  | Migration runs but runtime fails with "connection already in transaction" | `env.py` uses sync psycopg2; runtime uses asyncpg. Never import sync DB code into async context.                  |
+| **`SET LOCAL` instead of `SET`**       | GUC only lasts for transaction, not request                               | Use `SET` (session-level) not `SET LOCAL` (transaction-level). RLS policies apply to the session GUC.             |
+| **RLS on `pg_catalog` tables**         | Unexpected auth failures                                                  | RLS only on application tables. `pg_catalog` tables are system tables and must not have RLS.                      |
+
+### F.2 Async & Concurrency
+
+| Pitfall                                     | Symptom                                   | Fix                                                                                                             |
+| ------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **Blocking call in asyncio event loop**     | `watchdog` thread deadlocks; API hangs    | Use `loop.call_soon_threadsafe()` for all cross-thread → asyncio handoff. Never `await` inside watchdog thread. |
+| **`asyncio.gather` + one failure**          | Partial results; hard to debug            | Always use `asyncio.gather(*tasks, return_exceptions=True)` and check results.                                  |
+| **Asyncpg connection leak**                 | DB connections exhausted; API returns 500 | Use `async with` context managers for all `acquire()` / `connect()` calls. Add `max_connections` pool limit.    |
+| **APScheduler double execution**            | Jobs run twice (index thrashing)          | Run APScheduler in dedicated supervisord program (not uvicorn worker). Or use advisory locks.                   |
+| **Advisory lock not released on exception** | Subsequent Dream runs block forever       | Always wrap `pg_try_advisory_lock` in `try/finally`; release in `finally`.                                      |
+
+### F.3 MCP & Tool Surface
+
+| Pitfall                                       | Symptom                                        | Fix                                                                                                       |
+| --------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Tool result larger than transport limit**   | MCP HTTP returns 413 or drops response         | Stream large results. For `brain.search` with 100+ hits, paginate.                                        |
+| **`remote=true` check missing on write path** | Malicious remote client writes outside vault   | Every write service function must assert `ctx.remote == False` or validate vault-relative path.           |
+| **Token not hashed before storage**           | MCP tokens appear in logs or error messages    | Always `SHA256(token)` before storing. Return plaintext exactly once on creation.                         |
+| **MCP tool schema drift**                     | Client tools don't match server                | Regenerate `tools.openapi.json` on every PR that changes tool surface. CI must fail on drift (REQ-1505B). |
+| **External MCP server output not sanitized**  | Malicious MCP tool injects XSS via tool result | Always nh3-sanitize MCP outputs before returning to LLM (REQ-2801).                                       |
+
+### F.4 LLM & Embedding
+
+| Pitfall                                 | Symptom                                     | Fix                                                                                                              |
+| --------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **LiteLLM callback in wrong thread**    | `llm_usage` records have wrong `user_id`    | Ensure `OperationContext.user_id` is captured before entering async thread.                                      |
+| **Embedding batch too large**           | Provider 413 or timeout                     | Default batch size 64; reduce for large models or slow providers. Add retry with exponential backoff.            |
+| **Embedding dimension mismatch**        | pgvector rejected insert                    | `openai/text-embedding-3-small` → 1536. Verify `rag.embedding_dimensions` matches embedder output before insert. |
+| **Stale embeddings after model change** | Old embeddings produce irrelevant search    | `enrichment_hash` must change on model change; backfill job re-embeds. Run after migration.                      |
+| **LLM cost tracking missing**           | `llm_usage` table has null `cost_usd`       | Register LiteLLM callback on every `acompletion` / `aembedding` call.                                            |
+| **Cheap tier not available**            | Fallback to expensive model; cost explosion | Verify cheap tier models are configured in `settings.yaml`. Default to balanced if cheap unavailable.            |
+
+### F.5 Vault & File System
+
+| Pitfall                             | Symptom                                                  | Fix                                                                                                                |
+| ----------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **File watcher miss on Syncthing**  | New files not indexed                                    | Reconciliation runs every 6h as fallback. Content hash dedup prevents unnecessary re-indexing.                     |
+| **Partial file write**              | Indexer reads half-written file; corrupt chunks          | API writes use `temp_file + os.rename()` atomic pattern. DB transaction rolls back on file write failure.          |
+| **`content_hash` computed wrong**   | Pages never re-indexed after edit                        | Hash must be `xxhash(raw_file_bytes)`. Python's `hash()` is not deterministic across runs.                         |
+| **Wikilink resolution incorrect**   | `[[shared/Topic]]` resolves to private                   | Explicit prefix `[[shared/...]]` bypasses resolution order. Always check for prefix before applying default order. |
+| **Slug collision after vault move** | PUT fails with 409 on moved file                         | `PUT /api/v1/pages/{slug}` is idempotent by slug. After `vault/move`, the new slug path is authoritative.          |
+| **`compiled_truth` not boosted**    | Search returns timeline content instead of current state | Apply `+0.15` RRF boost to `kind='compiled_truth'` chunks (REQ-1014). Verify in fixture benchmark.                 |
+
+### F.6 Skills & Agent
+
+| Pitfall                                       | Symptom                                        | Fix                                                                                                         |
+| --------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Skill reads vault file without validation** | Path traversal via `../` in skill parameter    | All vault-relative paths from skills must pass slug validation (`^[a-z0-9][a-z0-9\-]{0,127}$`).             |
+| **Skill calls LLM without tier declaration**  | Unintended expensive model used                | Skills must declare `tier: cheap                                                                            | balanced | strong` in frontmatter. Router validates. |
+| **Agent refuses to answer (false positive)**  | Brain has data but agent says "no info"        | Check that RAG returned results. Agent refusal only triggers when `retrieved_evidence_count == 0`.          |
+| **Brain-first convention violated**           | Agent calls external API before querying brain | System prompt must include "MUST `search` or `get_page` before any external API call." Verify in e2e test.  |
+| **Skill chains infinite loop**                | Stack overflow on circular skill references    | RESOLVER.md trigger matching is top-to-bottom. Skills calling other skills must track depth. Max depth = 5. |
+| **Skill result not cached**                   | Repeated LLM calls for same skill              | Skill results cached for `skill_cache_ttl_seconds` (default 300s). Bypass: re-run with `force: true`.       |
+
+### F.7 Security & Trust Boundary
+
+| Pitfall                                | Symptom                                          | Fix                                                                                         |
+| -------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| **`encrypted_key` in response schema** | API key leaked in HTTP response                  | Pydantic response models must not include `encrypted_key` field. Use `Field(exclude=True)`. |
+| **Fernet key in logs**                 | Encryption key appears in log lines              | Use structlog with secret redaction. Never `logger.info(f"key={key}")`.                     |
+| **CORS allow-all**                     | Unauthorized cross-origin requests               | `cors_origins: ["http://localhost:*", "app://."]` in settings.yaml. Never `["*"]`.          |
+| **Admin endpoint without fresh auth**  | Stolen session can perform destructive admin ops | 60-min fresh auth required for destructive operations (REQ-2303).                           |
+| **HTML stored without sanitization**   | XSS via page content                             | All HTML passed through nh3 before storage. HTML must be converted to markdown.             |
+
+### F.8 Deployment & Observability
+
+| Pitfall                               | Symptom                                   | Fix                                                                                               |
+| ------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Alembic migration fails**           | Container refuses to start                | Failed migrations abort boot (REQ-2530). Always write reversible migrations. Test downgrade path. |
+| **`apscheduler_jobs` in Alembic**     | Migration tries to drop APScheduler table | `apscheduler_jobs` is managed by APScheduler, not Alembic. Exclude from migrations.               |
+| **Health check false positive**       | `/readyz` returns 200 but system degraded | `/readyz` checks Postgres + pgvector + scheduler + watchdog + MCP HTTP. All must pass.            |
+| **Prometheus metrics missing labels** | Aggregation by user not possible          | All metrics must include `user_id` label where user-attributable.                                 |
+| **Structured log not JSON**           | Log aggregator can't parse                | FastAPI uvicorn logs must use JSON. Configure `uvicorn --log-config logging.json`.                |
+
+---
+
+## Appendix G — Backup & Restore Runbook (Operational)
+
+### G.1 Backup (standard)
+1. Ensure `SMARTCOPILOT_FERNET_KEY` is securely stored (password manager/secret store).
+2. Run: `smartcopilot backup create --output /backups/smartcopilot-YYYY-MM-DD.tar.zst`
+3. Run: `smartcopilot backup verify --input /backups/...tar.zst`
+
+### G.2 Restore (fresh instance)
+1. Start a fresh container with the same `SMARTCOPILOT_FERNET_KEY`.
+2. Run: `smartcopilot backup restore --input /backups/...tar.zst`
+3. Run: `smartcopilot backup verify --post-restore`
+
+### G.3 Validation checklist
+- `/readyz` returns 200
+- MCP HTTP reachable
+- Sample page retrieval works
+- Search returns expected results
+
+---
+
+*End of Smart Copilot PRD v26.05.1 (DRAFT v0.5.1).*
