@@ -1,35 +1,44 @@
-# State: Smart Copilot
+# Project State
 
-**Project:** .planning/PROJECT.md (updated 2026-05-09)
-**Core value:** Users can query their personal knowledge vault through AI agents with hybrid retrieval and get grounded, cite-backed responses
-**Current phase:** Not started
+## Project Reference
 
-## Phase Status
+See: .planning/PROJECT.md (updated 2026-05-07)
 
-| # | Name | Status | Plans | Progress |
-|---|------|--------|-------|----------|
-| 1 | Foundation | ○ | 0/0 | 0% |
-| 2 | RAG + Agent | ○ | 0/0 | 0% |
-| 3 | Skills + Ingestion | ○ | 0/0 | 0% |
-| 4 | Memory Dream | ○ | 0/0 | 0% |
-| 5 | Web + Workspaces | ○ | 0/0 | 0% |
-| 6 | Admin + Observability | ○ | 0/0 | 0% |
-| 7 | Platform | ○ | 0/0 | 0% |
-| 8 | Electron Client | ○ | 0/0 | 0% |
+**Core value:** The agent can instantly query, write, and reason over the user's entire knowledge base through any MCP-capable client with zero setup beyond `docker run`
+**Current focus:** Phase 1a — Container + Data Layer
 
-## Milestones
+## Current Position
 
-| Name | Phases | Status |
-|------|--------|--------|
-| v1.0 | 1–4 | ○ Not started |
-| v1.1 | 5–8 | ○ Not started |
+Phase: 1a of 11 (Container + Data Layer)
+Plan: 0 of 4 (Phase 1a not yet discussed)
+Status: Phase 1a READY TO DISCUSS
 
-## Active Context
+Last activity: 2026-05-09
 
-**Source of Truth:** `.planning/product_requirements_v26.05.md` (270KB PRD)
-**Mode:** interactive
-**Granularity:** standard
-**Parallelization:** true
+Progress: [░░░░░░░░░░] 0% (No phases complete)
 
----
-*Last updated: 2026-05-09 after initialization*
+## Performance Metrics
+
+**Velocity:**
+
+- Total plans completed: 0
+- Total execution time: not started
+
+**By Phase:**
+
+| Phase | Plans | Status |
+|-------|-------|--------|
+| 1a — Container + Data Layer | 0/4 | Not started |
+| 1b — Auth + Security Primitives | 0/8 | Not started |
+| 1c — Vault + Watchdog Indexer | 0/8 | Not started |
+
+## Session Continuity
+
+Last session: not started
+Stopped at: fresh start — discuss Phase 1a with /gsd-discuss-phase 1a
+
+## Accumulated Context
+
+### Decisions
+
+See: None (no phases completed yet)

@@ -1,203 +1,371 @@
-# Requirements: Smart Copilot
+# Smart Copilot — v1 Requirements
 
-**Defined:** 2026-05-09
-**Core Value:** Users can query their personal knowledge vault through AI agents with hybrid retrieval and get grounded, cite-backed responses
+**Version:** v1.0
+**Source:** PRD v26.05.1 + research synthesis
+**Scope:** Phases 1–7 (Electron desktop client deferred to post-v1)
+**Structure:** Horizontal Layers
+
+---
 
 ## v1 Requirements
 
-### Foundation (Phase 1)
+### Infrastructure (INFRA)
 
-- [ ] **FOUND-01**: User can register with email/password (argon2-cffi hashing, 10 fails/15min rate limit)
-- [ ] **FOUND-02**: User can log in and receive access JWT + refresh token
-- [ ] **FOUND-03**: Session persists with revocable refresh tokens (SHA-256 hashed)
-- [ ] **FOUND-04**: Admin can create/delete users via CLI and REST
-- [ ] **FOUND-05**: User can create named MCP bearer tokens (256-bit, shown once)
-- [ ] **FOUND-06**: MCP tokens are revocable and track last_used_at
-- [ ] **FOUND-07**: All admin operations are audited in audit_log
-- [ ] **FOUND-08**: System runs as single Docker container with supervisord (nodaemon=true)
-- [ ] **FOUND-09**: PostgreSQL 16 + pgvector as sole datastore (no Redis/Celery)
-- [ ] **FOUND-10**: API keys encrypted at rest with Fernet (never in Pydantic responses)
-- [ ] **FOUND-11**: Multi-tenant isolation via PostgreSQL RLS (GUC session context)
+- [ ] **INFRA-01**: System runs as a single Docker container managed by `supervisord` with `nodaemon=true` as PID 1
+- [ ] **INFRA-02**: Container manages at minimum: `postgres`, `fastapi` (uvicorn), `mcp-http`, `apscheduler`, `watchdog` processes under supervisord
+- [ ] **INFRA-03**: PostgreSQL 16 with `pgvector` extension is the sole primary datastore — no Redis, Celery, or external broker
+- [ ] **INFRA-04**: Repo is a `pnpm` workspaces monorepo with Python under `server/app/` (src-style) and Electron client stub under `clients/desktop/`
+- [ ] **INFRA-05**: Node 20 LTS and Python 3.12 are pinned via `.nvmrc` and `pyproject.toml` / `.python-version`
+- [ ] **INFRA-06**: Ruff is the sole Python linter/formatter; pre-commit hooks enforce formatting
+- [ ] **INFRA-07**: Backend is Python 3.12, FastAPI, async-first, using `asyncpg` for runtime and `psycopg2` for Alembic migrations only
+- [ ] **INFRA-08**: Volumes defined for `/data` (PostgreSQL), `/vaults` (markdown), `/config`
 
-### MCP Server (Phase 1)
+### Authentication & Authorization (AUTH)
 
-- [ ] **MCP-01**: MCP server supports stdio mode (`smartcopilot mcp serve --stdio`)
-- [ ] **MCP-02**: MCP server supports HTTP mode (Streamable HTTP, port 8787)
-- [ ] **MCP-03**: MCP bearer token auth with per-user RLS context
-- [ ] **MCP-04**: All MCP tools call same service layer as REST API
+- [ ] **AUTH-01**: User accounts with username, email, argon2-cffi password hashing (memory ≥ 64 MiB, iterations ≥ 3)
+- [ ] **AUTH-02**: Session management: `/auth/login` returns `{access_jwt, refresh_token}`; access JWT is short-lived; refresh token stored as SHA-256 hash and revocable
+- [ ] **AUTH-03**: Login rate-limited at 10 failures / 15 minutes / IP+username pair
+- [ ] **AUTH-04**: MCP bearer tokens — per-user, named, 256-bit random, presented once on creation, stored as SHA-256 hash, revocable within 5 seconds
+- [ ] **AUTH-05**: MCP tokens record `last_used_at` on every successful auth
+- [ ] **AUTH-06**: Two RBAC roles only: `admin` and `user`; all admin operations audited in `audit_log`
+- [ ] **AUTH-07**: Step-up fresh authentication for destructive admin operations (valid within last 60 minutes); `POST /api/v1/admin/reauth` endpoint
+- [ ] **AUTH-08**: Trusted proxy header support (`SMARTCOPILOT_TRUST_PROXY`) with IP allowlist for `X-Forwarded-For` forwarding
+- [ ] **AUTH-09**: API keys for third-party providers encrypted at rest using Fernet; encrypted column never returned in any API response
+- [ ] **AUTH-10**: Per-user and shared API key resolution; resolution order defined in PRD Section 24.2
 
-### Vault & Pages (Phase 1)
+### Vault & Page Management (VAULT)
 
-- [ ] **VAULT-01**: Private vaults at `/vaults/private/{username}/`
-- [ ] **VAULT-02**: Shared vault at `/vaults/shared/`
-- [ ] **VAULT-03**: Path traversal and symlink escape blocked
-- [ ] **PAGE-01**: Pages support compiled-truth + timeline convention (--- separator)
-- [ ] **PAGE-02**: Pages support frontmatter (YAML JSONB)
-- [ ] **PAGE-03**: Page CRUD with content-hash dedup
-- [ ] **PAGE-04**: Watchdog file indexer with thread→asyncio handoff
-- [ ] **PAGE-05**: Soft delete with deleted_at, deleted_by, delete_reason
+- [ ] **VAULT-01**: Private vaults at `/vaults/private/{username}/`; shared vault at `/vaults/shared/`; symlink escape and `..` traversal rejected
+- [ ] **VAULT-02**: Multi-tenancy enforced by PostgreSQL Row-Level Security with `app.current_user_id` session GUC (not `SET LOCAL`)
+- [ ] **VAULT-03**: Shared vault readable by all authenticated users; write access governed by `shared_vault_write` policy (`admin_only` | `all_users`)
+- [ ] **VAULT-04**: Page CRUD with compiled-truth + timeline convention: horizontal-rule separator; above-the-line rewritable summary; below-the-line append-only event log
+- [ ] **VAULT-05**: Frontmatter parsed (YAML); page types: `person`, `company`, `concept`, `idea`, `project`, `note`, `meeting`, `article`, `media`, `personal`
+- [ ] **VAULT-06**: Note types (Zettelkasten lifecycle): `fleeting`, `literature`, `permanent`, `archived_fleeting`, `skill`, `moc`
+- [ ] **VAULT-07**: Content-hash deduplication (`xxhash64` of raw file bytes); enrichment-hash-based re-embedding trigger
+- [ ] **VAULT-08**: Page versioning (`page_versions` table); soft delete with `deleted_at`, `deleted_by`, `delete_reason`; soft-deleted pages excluded from search/graph by default
+- [ ] **VAULT-09**: Wikilink resolution: shortest-unique-path matching (Obsidian-compatible); alphabetically-first on tie; cross-namespace via `[[shared/Topic]]` prefix
+- [ ] **VAULT-10**: Slug validation: `^[a-z0-9][a-z0-9\-]{0,127}$` for `remote=true` callers; path confinement enforced on all write paths
+- [ ] **VAULT-11**: OpenAPI auto-generation from FastAPI routes; `docs/openapi.json` regenerated by pre-commit hook on route changes
 
-### REST + WebSocket (Phase 1)
+### Watchdog File Indexer (IDX)
 
-- [ ] **API-01**: REST API with OpenAPI generation
-- [ ] **API-02**: WebSocket gateway for real-time updates
-- [ ] **API-03**: SSE stream for chat completions
-- [ ] **API-04**: Admin REST endpoints for all admin operations
+- [ ] **IDX-01**: Filesystem watchdog observer detects vault file changes (inotify on Linux, polling fallback)
+- [ ] **IDX-02**: Watchdog runs as a separate supervisord process; thread→asyncio handoff via `asyncio.run_coroutine_threadsafe(coro, loop)` for async coroutine dispatch (D-06)
+- [ ] **IDX-03**: Change detection based on `content_hash` (xxhash64); re-parse and re-index only on change
+- [ ] **IDX-04**: Reconciliation job corrects filesystem ↔ database drift
 
-### RAG (Phase 2)
+### MCP Server (MCP)
 
-- [ ] **RAG-01**: Chunking with compiled_truth/timeline/frontmatter kinds
-- [ ] **RAG-02**: Embeddings via LiteLLM with HNSW index (1536 dim default)
-- [ ] **RAG-03**: BM25 tsvector index with websearch_to_tsquery
-- [ ] **RAG-04**: Hybrid retrieval with Reciprocal Rank Fusion (RRF)
-- [ ] **RAG-05**: Multi-query expansion + intent classification
-- [ ] **RAG-06**: 4-layer dedup (page-level, chunk-level, semantic, RRF)
+- [ ] **MCP-01**: MCP server supports stdio mode (`smartcopilot mcp serve --stdio`); stdout used only for JSON-RPC framing; logs to stderr
+- [ ] **MCP-02**: MCP server supports Streamable HTTP mode on configurable port (default 8787), launched by supervisord as `mcp-http`
+- [ ] **MCP-03**: Both transports use the same tool implementations from the service layer (no duplication)
+- [ ] **MCP-04**: `OperationContext` constructed per request with: `user_id`, `transport`, `remote` flag, `client_name`, `request_id`
+- [ ] **MCP-05**: `remote=true` callers blocked from shell exec, cross-user vault reads, system skill modification, key rotation, user creation; slug/filename validated
+- [ ] **MCP-06**: MCP tool surface (≥ 30 tools): `brain.search`, `brain.query`, `brain.get`, `brain.put`, `brain.append_timeline`, `brain.update_compiled_truth`, `brain.list`, `brain.delete`, `brain.history`, `brain.diff`, `brain.revert`, `brain.tags.*`, `brain.backlinks`, `brain.graph.traverse`, `brain.entity.*`, `brain.stats`, `brain.health`, `capability_discovery`, `ingest.idea`, `ingest.media`, `ingest.meeting`, `enrich.entity`, `recipe.run`, `skill.list/get/run`, `jobs.submit/status/cancel`, `maintain.run/report`
+- [ ] **MCP-07**: Each MCP tool has JSON schema for inputs and outputs; testable via integration test with constructed `OperationContext`
+- [ ] **MCP-08**: Per-token usage metrics recorded; STDIO auth via `SMARTCOPILOT_MCP_TOKEN` env var; HTTP auth via `Authorization: Bearer`
 
-### Auto-Link Extraction (Phase 2)
+### REST + WebSocket API (REST)
 
-- [ ] **LINK-01**: Zero-LLM deterministic wikilink extraction on every page write
-- [ ] **LINK-02**: Typed entities: person, company, concept, idea
-- [ ] **LINK-03**: Typed links with confidence, context_excerpt
-- [ ] **LINK-04**: Graph queries via recursive CTEs (who works at X, what did Y invest in)
+- [ ] **REST-01**: Every MCP tool has a 1:1 REST endpoint at `/api/v1/` backed by the same service function
+- [ ] **REST-02**: All REST responses are Pydantic models; encrypted keys never returned
+- [ ] **REST-03**: `/ws` WebSocket endpoint streams: indexing progress, job status, ingestion progress, maintenance reports, query tokens
+- [ ] **REST-04**: Error format: `{error: {code, message, details?}}` with stable codes: `unauthorized`, `forbidden`, `not_found`, `validation_error`, `conflict`, `rate_limited`, `service_unavailable`, `internal_error`
+- [ ] **REST-05**: Capability discovery: `GET /api/v1/capabilities` and `capability_discovery` MCP tool; returns transports, clipboard availability, ingestion limits
+- [ ] **REST-06**: Routes are thin (validate → service → response model); services are transport-agnostic (no FastAPI types in `services/`)
 
-### Agent Surface (Phase 2)
+### CLI Admin Tools + Admin REST (CLI)
 
-- [ ] **AGENT-01**: 22-tool agent surface
-- [ ] **AGENT-02**: Brain-first system prompt (query brain before external API)
-- [ ] **AGENT-03**: Skill run tool with RESOLVER.md dispatcher
+- [ ] **CLI-01**: `smartcopilot` binary inside container for: user CRUD, MCP token management, provider key management, vault operations, MCP serve, doctor, maintain run, ingest, search, query, get, put, extract, jobs, skills
+- [ ] **CLI-02**: `smartcopilot doctor` runs smoke tests; `smartcopilot smoke-test` runs drop-in scripts from `/etc/smartcopilot/smoke-tests.d/*.sh`
+- [ ] **CLI-03**: `smartcopilot check-resolvable` validates skills tree for reachability, MECE, DRY, gap detection, orphans
+- [ ] **CLI-04**: Admin REST endpoints parallel to CLI: user CRUD, shared API keys, embedding migration, dream status/triggers, MCP server registration
+- [ ] **CLI-05**: All admin REST endpoints enforce `role='admin'` AND fresh auth factor within last 60 minutes for destructive operations
 
-### Skills System (Phase 3)
+### Hybrid RAG Pipeline (RAG)
 
-- [ ] **SKILL-01**: Skills as first-class workflow primitive
-- [ ] **SKILL-02**: RESOLVER.md dispatcher
-- [ ] **SKILL-03**: System namespace for default skills
-- [ ] **SKILL-04**: Per-user namespace for user skills
-- [ ] **SKILL-05**: Default ingest skills: idea-ingest, media-ingest, meeting-ingestion
+- [ ] **RAG-01**: Chunking pipeline: content-kind-aware (compiled_truth, timeline, frontmatter, note_type); archived_fleeting and skill pages skip embed pipeline
+- [ ] **RAG-02**: Embeddings stored in `pgvector` HNSW index at 1536 dimensions (Phase 1: `openai/text-embedding-3-small`); `enriched_content` field used for embedding
+- [ ] **RAG-03**: BM25 search via PostgreSQL `tsvector` + `websearch_to_tsquery`; GIN index on `chunks.tsv`
+- [ ] **RAG-04**: Hybrid retrieval combines vector + BM25 + graph results via Reciprocal Rank Fusion: `score = sum(1/(60 + rank))`
+- [ ] **RAG-05**: Intent classifier, multi-query expansion, compiled-truth boost (+0.15), backlink boost, stale annotation, 4-layer deduplication
+- [ ] **RAG-06**: LLM router enforced for all embedding and LLM calls; no direct LiteLLM calls in routes or services (must go through `llm/router.py` for cost tracking)
+- [ ] **RAG-07**: Embedding migration: add new column → backfill concurrently → `CREATE INDEX CONCURRENTLY` → atomic rename; estimate/start/status/cancel endpoints
 
-### Entity Enrichment (Phase 3)
+### Knowledge Graph + Auto-Link Extraction (GRAPH)
 
-- [ ] **ENRICH-01**: Tiered entity enrichment (person, company, concept)
-- [ ] **ENRICH-02**: Entity canonicalization and alias management
-- [ ] **ENRICH-03**: Compiled-truth + timeline on enriched entities
+- [ ] **GRAPH-01**: Zero-LLM typed wikilink extraction on every page write (deterministic, no API cost)
+- [ ] **GRAPH-02**: Extracted link types: wikilink, bare_slug, inferred; target entity kinds: person, company, concept, idea
+- [ ] **GRAPH-03**: Wikilink graph queried via recursive CTEs (no external graph engine); B-tree index on `links.src_page_id` and `links.dst_entity_id`
+- [ ] **GRAPH-04**: Entity deduplication with canonical slug + aliases; entity merge operation
+- [ ] **GRAPH-05**: Timeline event extraction from page timeline section; `timeline_events` table with date, source, detail
+- [ ] **GRAPH-06**: `brain.graph.traverse` MCP/REST tool for typed-link graph traversal; `who works at X` and `what did Y invest in` query patterns
 
-### Data Research (Phase 3)
+### Agent Runner (AGENT)
 
-- [ ] **RESEARCH-01**: Data-research recipes
-- [ ] **RESEARCH-02**: Web search (DuckDuckGo, Jina Reader, Wikipedia)
+- [ ] **AGENT-01**: 22-tool in-process agent surface (ReAct loop) with brain-first system prompt
+- [ ] **AGENT-02**: Agent MUST query local brain (`search`/`get_page`) before any external API call
+- [ ] **AGENT-03**: Agent tool surface includes all 22 tools from PRD Section 17
+- [ ] **AGENT-04**: `skill_run` tool calls the skills runtime; `jobs.submit` tool submits durable background jobs
+- [ ] **AGENT-05**: Conversations table with `mcp_mode` (`disable`/`auto`/`manual`), `web_search_enabled`; messages with citations, token usage, model tracking
+- [ ] **AGENT-06**: Golden query eval suite: `golden_query_suites`, `golden_queries`, `golden_query_runs`; metrics: Precision@K, Recall@K, MRR, nDCG@K, p95 latency
 
-### Memory Dream (Phase 4)
+### LLM Provider Integration (LLM)
 
-- [ ] **DREAM-01**: Nightly Memory Dream consolidation cycle
-- [ ] **DREAM-02**: Stale page detection and flagging
-- [ ] **DREAM-03**: Orphan page detection
-- [ ] **DREAM-04**: Dead link audit
-- [ ] **DREAM-05**: Citation re-check
-- [ ] **DREAM-06**: Back-link enforcement
-- [ ] **DREAM-07**: Tag consistency maintenance
-- [ ] **DREAM-08**: Maintenance report via MCP and REST
+- [ ] **LLM-01**: LiteLLM used as in-process Python library import (never deployed as proxy)
+- [ ] **LLM-02**: Three model tiers: cheap / balanced / strong; router selects tier based on request classification
+- [ ] **LLM-03**: Cost tracking per-request via `llm_usage` table (provider, model, input/output tokens, cost_usd, conversation_id)
+- [ ] **LLM-04**: Supported providers: OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, Ollama (local), custom endpoints
+- [ ] **LLM-05**: Per-user encrypted provider keys with system fallback (shared admin keys); resolution order per PRD Section 24.2
 
-### Projects & Workspaces (Phase 5)
+### Skills System (SKILLS)
 
-- [ ] **PROJ-01**: Project/workspace scoped queries (folder patterns, tags)
-- [ ] **PROJ-02**: include_folders, exclude_folders, tag_includes, tag_excludes
-- [ ] **PROJ-03**: Optional system_prompt and default_model per project
+- [ ] **SKILLS-01**: Skills system with RESOLVER.md dispatcher; skills encoded as fat markdown files the agent reads and executes
+- [ ] **SKILLS-02**: System namespace (`/vaults/shared/.skills/`) and per-user namespace (`/vaults/private/{user}/.skills/`)
+- [ ] **SKILLS-03**: Skill CRUD: list, get, create, run; `smartcopilot skill` CLI commands
+- [ ] **SKILLS-04**: RESOLVER.md skill: deterministic skill selection from intent; MECE coverage enforced by `check-resolvable`
+- [ ] **SKILLS-05**: Default skill pack shipped: `idea-ingest`, `media-ingest`, `meeting-ingestion` + 26 additional system skills (Appendix A)
+- [ ] **SKILLS-06**: `skillify check` and `skillify scaffold` CLI for skill authoring workflow
+- [ ] **SKILLS-07**: Client integration kit: Claude Desktop config, Hermes Agent config, generic MCP client setup
 
-### Vault Intelligence (Phase 5)
+### Ingestion (INGEST)
 
-- [ ] **INTEL-01**: Orphan endpoint
-- [ ] **INTEL-02**: Hub detection endpoint
-- [ ] **INTEL-03**: Link suggestion endpoint
-- [ ] **INTEL-04**: Vault graph endpoint
-- [ ] **INTEL-05**: Vault organize endpoints (organize/apply/undo)
+- [ ] **INGEST-01**: `idea-ingest` skill: captures raw ideas, creates fleeting notes, extracts typed links on write
+- [ ] **INGEST-02**: `media-ingest` skill: supports PDF (PyMuPDF), DOCX (python-docx), URL (readability-lxml + nh3), voice notes
+- [ ] **INGEST-03**: `meeting-ingestion` skill: pasted transcript → creates/updates person and company pages with compiled-truth + timeline; emits typed links
+- [ ] **INGEST-04**: `smartcopilot ingest <file-or-url>` CLI routes to appropriate ingestion skill
+- [ ] **INGEST-05**: HTML sanitization via nh3 (Rust-based); HTML always converted to markdown before storage
 
-### Admin & Observability (Phase 6)
+### Entity Enrichment (ENRICH)
 
-- [ ] **ADMIN-01**: User CRUD via REST
-- [ ] **ADMIN-02**: Shared API keys management
-- [ ] **ADMIN-03**: Embedding migration with progress tracking
-- [ ] **ADMIN-04**: Dream status and triggers
-- [ ] **ADMIN-05**: MCP server registration (add external MCP servers)
-- [ ] **ADMIN-06**: Prometheus /metrics endpoint
-- [ ] **ADMIN-07**: Structured JSON logs
-- [ ] **ADMIN-08**: Audit log query endpoint
-- [ ] **ADMIN-09**: Real per-user usage and cost via REST
+- [ ] **ENRICH-01**: Tiered entity enrichment: T1 (free — web search, Wikipedia), T2 (cheap LLM — structured extraction), T3 (strong LLM — deep research)
+- [ ] **ENRICH-02**: Enrichment triggered by `enrichment_hash` comparison (xxhash64 of enrichment inputs) on page write
+- [ ] **ENRICH-03**: `enrich.entity` MCP/REST tool; `smartcopilot enrich` CLI
+- [ ] **ENRICH-04**: Data-research recipes (YAML): configurable multi-step enrichment pipelines; `recipe.run` MCP/REST tool
 
-### Platform (Phase 7)
+### Memory Dream + Brain Maintenance (DREAM)
 
-- [ ] **PLAT-01**: MCP server registry (admin-configurable external servers)
-- [ ] **PLAT-02**: Durable-job DAGs (minion-orchestrator)
-- [ ] **PLAT-03**: Job cancellation
-- [ ] **PLAT-04**: Rate limits
-- [ ] **PLAT-05**: Deterministic backup automation script
-- [ ] **PLAT-06**: Verified restore procedure
+- [ ] **DREAM-01**: Nightly Memory Dream consolidation: stale-page detection, orphan detection, dead-link audit, citation audit, back-link enforcement, tag consistency
+- [ ] **DREAM-02**: Dream runs under advisory lock (`pg_try_advisory_lock`) to prevent duplicate execution across restarts
+- [ ] **DREAM-03**: `dream_audit_log` table records: run_at, kind, status, pages_processed, memories_created, errors
+- [ ] **DREAM-04**: Maintenance report emitted as MCP tool result and REST endpoint response
+- [ ] **DREAM-05**: `maintain.run` (on-demand) and `maintain.report` MCP/REST tools; `smartcopilot maintain run [--dry-run]` CLI
+- [ ] **DREAM-06**: Memories table: extracted from conversations, archived flag, source_conversation_id
 
-### Electron Client (Phase 8)
+### Web Search + Projects (WEB)
 
-- [ ] **UI-01**: Electron/TypeScript/React desktop client
-- [ ] **UI-02**: Chat-first UI with split-pane Tiptap editor
-- [ ] **UI-03**: Vault sidebar
-- [ ] **UI-04**: System tray + Quick Chat with global hotkey
-- [ ] **UI-05**: DOMPurify clipboard sanitization
-- [ ] **UI-06**: electron-store local settings
-- [ ] **UI-07**: electron-updater auto-update via GitHub Releases
-- [ ] **UI-08**: SSE streaming chat (citations, tool_start/result, confirm modals)
-- [ ] **UI-09**: Obsidian export feature
+- [ ] **WEB-01**: Web search skill: DuckDuckGo + Jina Reader + Wikipedia; cross-vault reference detection
+- [ ] **WEB-02**: `@web` query prefix triggers web search mode; results ranked and cited
+- [ ] **WEB-03**: Projects/workspaces: folder/tag-scoped RAG contexts with `include_folders`, `exclude_folders`, `tags`, optional system prompt, default model
+- [ ] **WEB-04**: Project-scoped queries restrict RAG to the project's defined scope
+- [ ] **WEB-05**: `projects` table with per-user RLS; project CRUD via MCP/REST/CLI
 
-### Testing (Cross-phase)
+### Vault Intelligence (INTEL)
 
-- [ ] **TEST-01**: pytest + pytest-asyncio suite against real PostgreSQL
-- [ ] **TEST-02**: RLS isolation tests
-- [ ] **TEST-03**: End-to-end phase acceptance tests
+- [ ] **INTEL-01**: Vault intelligence endpoints (server-side only): orphans, hub pages, link suggestions, vault graph
+- [ ] **INTEL-02**: `/vault/organize`, `/vault/organize/apply`, `/vault/organize/undo` endpoints (workflow tools, exercisable via CLI/MCP before Phase 8 UI)
+- [ ] **INTEL-03**: `smartcopilot extract links` and `smartcopilot extract timeline` CLI for graph/timeline backfill
 
-## v2 Requirements
+### Observability (OBS)
 
-### Future
+- [ ] **OBS-01**: Prometheus `/metrics` endpoint with per-user usage and cost metrics
+- [ ] **OBS-02**: Structured JSON logs; all supervisord process logs route to Docker stdout/stderr (no log files)
+- [ ] **OBS-03**: Audit log query REST endpoint; `audit_log` table with `request_id` for correlation with `OperationContext`
+- [ ] **OBS-04**: `llm_usage` table tracks: provider, model, input/output tokens, cost_usd per request
+- [ ] **OBS-05**: Health checks: `GET /health`, `smartcopilot doctor` smoke test suite
 
-- **GOLDEN-01**: Golden query evaluation system for retrieval regression tests
-- **SEMANTIC-01**: Semantic hash for normalized page representation
-- **COLLAB-01**: Real-time multi-user collaborative editing
+### Admin Surfaces (ADMIN)
+
+- [ ] **ADMIN-01**: Full admin REST + CLI: user CRUD, shared API keys, embedding migration (estimate/start/status/cancel), dream status/triggers per user, MCP server registration
+- [ ] **ADMIN-02**: Embedding migration with progress tracking; dimension-change migration: add column → backfill concurrently → index → rename
+- [ ] **ADMIN-03**: Admin can create users, swap embedding models, view per-user usage/cost via REST without UI
+- [ ] **ADMIN-04**: `index_events` table tracks indexing activity per user/page
+
+### MCP Server Registry (REGISTRY)
+
+- [ ] **REGISTRY-01**: Admin-configurable external MCP servers added to agent's tool surface; `mcp_servers` table (admin-only RLS)
+- [ ] **REGISTRY-02**: External MCP server types: `stdio` and `streamable_http`; `always_allow` list for auto-approved tools
+- [ ] **REGISTRY-03**: Agent discovers and uses external MCP server tools; tool registration merged at runtime
+
+### Durable Job DAGs (JOBS)
+
+- [ ] **JOBS-01**: APScheduler 3.x with `SQLAlchemyJobStore` persisting to PostgreSQL (dedicated supervisord process, never inside uvicorn)
+- [ ] **JOBS-02**: Parent-child job DAGs (`minion-orchestrator` skill); job status: submitted/running/completed/failed/cancelled
+- [ ] **JOBS-03**: Job cancellation; rate limits; idempotency key on `jobs` table
+- [ ] **JOBS-04**: `jobs.submit`, `jobs.status`, `jobs.cancel` MCP/REST tools; `smartcopilot jobs list/status/cancel` CLI
+- [ ] **JOBS-05**: DAG runs to completion across container restarts (SQLAlchemy-backed persistence)
+
+### Backup + Restore (BACKUP)
+
+- [ ] **BACKUP-01**: Deterministic backup automation script: PostgreSQL dump + `/vaults/` + `/config/` archived together
+- [ ] **BACKUP-02**: Verified restore procedure: restore script + smoke test suite confirms restore integrity
+- [ ] **BACKUP-03**: Backup runbook documented in Appendix G of PRD
+
+### Testing (TEST)
+
+- [ ] **TEST-01**: `pytest + pytest-asyncio` test suite executing against a real PostgreSQL test database (no mocks for DB)
+- [ ] **TEST-02**: RLS isolation tests: assert that exiting a request scope leaves no session GUC leaked across pooled connections
+- [ ] **TEST-03**: MCP stdio cleanliness test: assert no unexpected stdout output in stdio mode
+- [ ] **TEST-04**: Phase acceptance tests per PRD Sections 6.1–6.7 (one per phase)
+- [ ] **TEST-05**: Golden query eval suite for retrieval regression: Precision@K, Recall@K, MRR, nDCG@K, p95 latency
+
+---
+
+## v2 Requirements (Deferred)
+
+- Electron desktop client (Phase 8): chat-first UI, Tiptap split-pane editor, system tray + Quick Chat, global hotkey, Obsidian export, auto-update via GitHub Releases
+- MultiFernet key rotation (post Phase 5 — no rotation path in v1; explicit accepted risk)
+- VS Code companion extension
+- Mobile clients
+- Real-time multi-user collaborative editing
+- Custom RBAC roles beyond `admin` / `user`
+- Reranker model integration (cross-encoder; off-by-default option for future phase)
+- Graph visualization before Electron client (server-side Cytoscape/Mermaid export)
+
+---
 
 ## Out of Scope
 
-| Feature | Reason |
-|---------|--------|
-| LightRAG / GraphRAG | Zero-LLM approach only |
-| Redis / Celery / RabbitMQ | PostgreSQL does everything |
-| LiteLLM as separate proxy | In-process library only |
-| SQLite / DuckDB / PGLite | PostgreSQL only |
-| Mobile clients | Desktop-first |
-| VS Code extension | MCP is the integration point |
-| Custom RBAC beyond admin/user | Two roles only |
-| LLM-based link extraction | Deterministic only |
+- LightRAG, GraphRAG, or LLM-based link extractor — deterministic wikilink extraction only (P5 principle)
+- Redis, Celery, RabbitMQ, or any external broker — PostgreSQL does the heavy lifting (P3 principle)
+- LiteLLM as a separate proxy — library import only (P4 principle)
+- SQLite, DuckDB, PGLite as primary store
+- Marketing copy, business model, pricing
+
+---
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| FOUND-01 through FOUND-11 | Phase 1 | Pending |
-| MCP-01 through MCP-04 | Phase 1 | Pending |
-| VAULT-01 through VAULT-03 | Phase 1 | Pending |
-| PAGE-01 through PAGE-05 | Phase 1 | Pending |
-| API-01 through API-04 | Phase 1 | Pending |
-| RAG-01 through RAG-06 | Phase 2 | Pending |
-| LINK-01 through LINK-04 | Phase 2 | Pending |
-| AGENT-01 through AGENT-03 | Phase 2 | Pending |
-| SKILL-01 through SKILL-05 | Phase 3 | Pending |
-| ENRICH-01 through ENRICH-03 | Phase 3 | Pending |
-| RESEARCH-01 through RESEARCH-02 | Phase 3 | Pending |
-| DREAM-01 through DREAM-08 | Phase 4 | Pending |
-| PROJ-01 through PROJ-03 | Phase 5 | Pending |
-| INTEL-01 through INTEL-05 | Phase 5 | Pending |
-| ADMIN-01 through ADMIN-09 | Phase 6 | Pending |
-| PLAT-01 through PLAT-06 | Phase 7 | Pending |
-| UI-01 through UI-09 | Phase 8 | Pending |
-| TEST-01 through TEST-03 | Cross-phase | Pending |
-
-**Coverage:**
-- v1 requirements: 68 total
-- Mapped to phases: 68
-- Unmapped: 0 ✓
-
----
-*Requirements defined: 2026-05-09*
-*Last updated: 2026-05-09 after initial extraction from PRD v26.05.1*
+| REQ-ID | PRD Section | Phase | Status |
+|--------|-------------|-------|--------|
+| INFRA-01 | §5, §REQ-100 | 1a | Pending |
+| INFRA-02 | §5, §REQ-101 | 1a | Pending |
+| INFRA-03 | §5, §REQ-102 | 1a | Pending |
+| INFRA-04 | §5A, §REQ-103 | 1a | Pending |
+| INFRA-05 | §5A, §REQ-104 | 1a | Pending |
+| INFRA-06 | §5A, §REQ-105 | 1a | Pending |
+| INFRA-07 | §5A, §REQ-106 | 1a | Pending |
+| INFRA-08 | §5A, §REQ-124 | 1a | Pending |
+| TEST-01 | §28, §REQ-010 | 1a | Pending |
+| AUTH-01 | §8, §REQ-400 | 1b | Pending |
+| AUTH-02 | §8, §REQ-401 | 1b | Pending |
+| AUTH-03 | §8, §REQ-402 | 1b | Pending |
+| AUTH-04 | §8, §REQ-410 | 1b | Pending |
+| AUTH-05 | §8, §REQ-411 | 1b | Pending |
+| AUTH-06 | §8, §REQ-420 | 1b | Pending |
+| AUTH-07 | §8, §REQ-421 | 1b | Pending |
+| AUTH-08 | §8, §REQ-430 | 1b | Pending |
+| AUTH-09 | §8, §REQ-431 | 1b | Pending |
+| AUTH-10 | §8, §REQ-434 | 1b | Pending |
+| TEST-02 | §28, §REQ-010 | 1b | Pending |
+| VAULT-01 | §7, §REQ-300 | 1c | Pending |
+| VAULT-02 | §7, §REQ-301 | 1c | Pending |
+| VAULT-03 | §7, §REQ-302 | 1c | Pending |
+| VAULT-04 | §7, §REQ-310 | 1c | Pending |
+| VAULT-05 | §14, §REQ-320 | 1c | Pending |
+| VAULT-06 | §14, §REQ-321 | 1c | Pending |
+| VAULT-07 | §7, §REQ-330 | 1c | Pending |
+| VAULT-08 | §7, §REQ-331 | 1c | Pending |
+| VAULT-09 | §5A.5, §REQ-340 | 1c | Pending |
+| VAULT-10 | §5A.7, §REQ-352 | 1c | Pending |
+| VAULT-11 | §10, §REQ-600 | 1c | Pending |
+| IDX-01 | §REQ-203 | 1c | Pending |
+| IDX-02 | §REQ-203 | 1c | Pending |
+| IDX-03 | §REQ-203 | 1c | Pending |
+| IDX-04 | §REQ-203 | 1c | Pending |
+| MCP-01 | §9, §REQ-500 | 1d | Pending |
+| MCP-02 | §9, §REQ-501 | 1d | Pending |
+| MCP-03 | §9, §REQ-502 | 1d | Pending |
+| MCP-04 | §9, §REQ-510 | 1d | Pending |
+| MCP-05 | §9, §REQ-511 | 1d | Pending |
+| MCP-06 | §9, §REQ-520 | 1d | Pending |
+| MCP-07 | §9, §REQ-531 | 1d | Pending |
+| MCP-08 | §9, §REQ-530 | 1d | Pending |
+| REST-01 | §10, §REQ-600 | 1d | Pending |
+| REST-02 | §10, §REQ-601 | 1d | Pending |
+| REST-03 | §10, §REQ-610 | 1d | Pending |
+| REST-04 | §10, §REQ-620 | 1d | Pending |
+| REST-05 | §10, §REQ-630 | 1d | Pending |
+| REST-06 | §10, §REQ-633 | 1d | Pending |
+| CLI-01 | §11, §REQ-700 | 1d | Pending |
+| CLI-02 | §11, §REQ-710 | 1d | Pending |
+| CLI-03 | §11, §REQ-720 | 1d | Pending |
+| CLI-04 | §12, §REQ-721 | 1d | Pending |
+| CLI-05 | §12, §REQ-723 | 1d | Pending |
+| TEST-03 | §28, §REQ-010 | 1d | Pending |
+| TEST-04 | §28, §REQ-010 | 1d | Pending |
+| LLM-01 | §24, §REQ-108 | 2a | Pending |
+| LLM-02 | §24, §REQ-109 | 2a | Pending |
+| LLM-03 | §24, §REQ-110 | 2a | Pending |
+| LLM-04 | §24, §REQ-111 | 2a | Pending |
+| LLM-05 | §24, §REQ-112 | 2a | Pending |
+| RAG-01 | §16, §REQ-1200 | 2a | Pending |
+| RAG-02 | §16, §REQ-1201 | 2a | Pending |
+| RAG-03 | §16, §REQ-1202 | 2a | Pending |
+| RAG-04 | §16, §REQ-1203 | 2a | Pending |
+| RAG-05 | §16, §REQ-1204 | 2a | Pending |
+| RAG-06 | §16, §REQ-1205 | 2a | Pending |
+| RAG-07 | §16, §REQ-2105 | 2a | Pending |
+| GRAPH-01 | §15, §REQ-212 | 2b | Pending |
+| GRAPH-02 | §15, §REQ-213 | 2b | Pending |
+| GRAPH-03 | §15, §REQ-214 | 2b | Pending |
+| GRAPH-04 | §15, §REQ-215 | 2b | Pending |
+| GRAPH-05 | §15, §REQ-216 | 2b | Pending |
+| GRAPH-06 | §15, §REQ-217 | 2b | Pending |
+| AGENT-01 | §17, §REQ-1300 | 2b | Pending |
+| AGENT-02 | §17, §REQ-1301 | 2b | Pending |
+| AGENT-03 | §17, §REQ-1302 | 2b | Pending |
+| AGENT-04 | §17, §REQ-372 | 2b | Pending |
+| AGENT-05 | §17, §REQ-373 | 2b | Pending |
+| AGENT-06 | §17, §REQ-374 | 2b | Pending |
+| TEST-05 | §28, §REQ-010 | 2b | Pending |
+| SKILLS-01 | §18, §REQ-1400 | 3 | Pending |
+| SKILLS-02 | §18, §REQ-1401 | 3 | Pending |
+| SKILLS-03 | §18, §REQ-1410 | 3 | Pending |
+| SKILLS-04 | §18, §REQ-1420 | 3 | Pending |
+| SKILLS-05 | §18, §REQ-1430 | 3 | Pending |
+| SKILLS-06 | §18, §REQ-1440 | 3 | Pending |
+| SKILLS-07 | §18A, §REQ-1441 | 3 | Pending |
+| INGEST-01 | §19, §REQ-1500 | 3 | Pending |
+| INGEST-02 | §19, §REQ-1510 | 3 | Pending |
+| INGEST-03 | §19, §REQ-1520 | 3 | Pending |
+| INGEST-04 | §19, §REQ-1530 | 3 | Pending |
+| INGEST-05 | §19, §REQ-1543 | 3 | Pending |
+| ENRICH-01 | §20, §REQ-1600 | 3 | Pending |
+| ENRICH-02 | §20, §REQ-1610 | 3 | Pending |
+| ENRICH-03 | §20, §REQ-1620 | 3 | Pending |
+| ENRICH-04 | §21, §REQ-1622 | 3 | Pending |
+| DREAM-01 | §22, §REQ-230 | 4 | Pending |
+| DREAM-02 | §22, §REQ-231 | 4 | Pending |
+| DREAM-03 | §22, §REQ-232 | 4 | Pending |
+| DREAM-04 | §30D, §REQ-233 | 4 | Pending |
+| DREAM-05 | §30D, §REQ-234 | 4 | Pending |
+| DREAM-06 | §30D, §REQ-235 | 4 | Pending |
+| WEB-01 | §REQ-2720 | 5 | Pending |
+| WEB-02 | §REQ-2721 | 5 | Pending |
+| WEB-03 | §REQ-2722 | 5 | Pending |
+| WEB-04 | §REQ-2723 | 5 | Pending |
+| WEB-05 | §REQ-2724 | 5 | Pending |
+| INTEL-01 | §REQ-2722 | 5 | Pending |
+| INTEL-02 | §REQ-2722 | 5 | Pending |
+| INTEL-03 | §REQ-2722 | 5 | Pending |
+| ADMIN-02 | §REQ-2730 | 5 | Pending |
+| OBS-01 | §26, §REQ-2220 | 6 | Pending |
+| OBS-02 | §26, §REQ-2221 | 6 | Pending |
+| OBS-03 | §26, §REQ-2222 | 6 | Pending |
+| OBS-04 | §26, §REQ-2731 | 6 | Pending |
+| OBS-05 | §26, §REQ-2732 | 6 | Pending |
+| ADMIN-01 | §REQ-2730 | 6 | Pending |
+| ADMIN-03 | §REQ-2730 | 6 | Pending |
+| ADMIN-04 | §REQ-2730 | 6 | Pending |
+| REGISTRY-01 | §REQ-2740 | 7 | Pending |
+| REGISTRY-02 | §REQ-2740 | 7 | Pending |
+| REGISTRY-03 | §REQ-2740 | 7 | Pending |
+| JOBS-01 | §23, §REQ-2741 | 7 | Pending |
+| JOBS-02 | §23, §REQ-2742 | 7 | Pending |
+| JOBS-03 | §23, §REQ-2743 | 7 | Pending |
+| JOBS-04 | §23, §REQ-2744 | 7 | Pending |
+| JOBS-05 | §23, §REQ-2745 | 7 | Pending |
+| BACKUP-01 | §REQ-2742, Appendix G | 7 | Pending |
+| BACKUP-02 | §REQ-2742, Appendix G | 7 | Pending |
+| BACKUP-03 | §REQ-2742, Appendix G | 7 | Pending |

@@ -16,14 +16,18 @@ Users can query their personal knowledge vault through AI agents (Claude Desktop
 
 ## Phases
 
-1. **Foundation** — Docker, auth, schema, file watcher, MCP, REST+WS
-2. **RAG + Agent** — Hybrid retrieval, auto-links, 22-tool agent
-3. **Skills + Ingestion** — Skills runtime, default ingest skills, enrichment
-4. **Memory Dream** — Nightly consolidation, brain maintenance
-5. **Web + Workspaces** — Web search, projects, vault intelligence
-6. **Admin + Observability** — Admin REST, Prometheus, audit
-7. **Platform** — MCP registry, DAG jobs, backups
-8. **Electron Client** — Desktop UI (deferred)
+1. **Phase 1a: Container + Data Layer** — Docker/supervisord, PostgreSQL 16 + pgvector, monorepo scaffold
+2. **Phase 1b: Auth + Security Primitives** — Argon2 password hashing, JWT sessions, MCP bearer tokens, RLS enforcement
+3. **Phase 1c: Vault + Watchdog Indexer** — Page CRUD, compiled-truth/timeline convention, filesystem watchdog
+4. **Phase 1d: MCP Server + REST API + CLI** — Stdio and HTTP MCP transports, smartcopilot CLI
+5. **Phase 2a: LLM Gateway + Hybrid RAG** — LiteLLM router, pgvector HNSW, BM25, RRF fusion
+6. **Phase 2b: Knowledge Graph + Agent Runner** — Zero-LLM wikilink extraction, 22-tool ReAct agent
+7. **Phase 3: Skills + Ingestion + Enrichment** — Skills runtime, default ingest skills, tiered enrichment
+8. **Phase 4: Memory Dream** — Nightly consolidation, orphan/dead-link audit
+9. **Phase 5: Web + Workspaces + Intel** — Web search, projects, vault intelligence
+10. **Phase 6: Admin + Observability** — Prometheus, audit logs, admin REST
+11. **Phase 7: Platform** — MCP registry, DAG jobs, backups
+12. **Phase 8: Electron Client** — Desktop UI (deferred)
 
 ## Workflow
 
@@ -35,8 +39,8 @@ Users can query their personal knowledge vault through AI agents (Claude Desktop
 
 | Command | Purpose |
 |---------|---------|
-| `/gsd-plan-phase 1` | Plan Phase 1 (Foundation) |
-| `/gsd-discuss-phase 1` | Discuss Phase 1 approach |
+| `/gsd-discuss-phase 1a` | Discuss Phase 1a approach |
+| `/gsd-plan-phase 1a` | Plan Phase 1a |
 | `/gsd-progress` | Check current progress |
 | `/gsd-stats` | Display project statistics |
 
@@ -54,4 +58,4 @@ Users can query their personal knowledge vault through AI agents (Claude Desktop
 - Phase 8 (Electron UI) deferred; CLI/MCP/REST available from Phase 1
 
 ---
-*Last updated: 2026-05-09 after initialization*
+*Last updated: 2026-05-09 — reset to Phase 1a (Foundation)*
