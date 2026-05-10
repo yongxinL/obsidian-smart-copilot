@@ -5,26 +5,21 @@ Phase 4 will swap the default in-memory store for SQLAlchemyJobStore for
 cross-restart durability. Supervisord program priority 40 invokes this as:
     python -m app.scheduler.run
 """
-
 from __future__ import annotations
 
 import asyncio
 import signal
 import sys
 
-import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.logging.redaction import configure_logging
 from app.scheduler.jobs.prune_login_attempts import prune_login_attempts
 
 
 async def _amain() -> int:
-    # WR-03: activate structlog + D-27 redaction processor before any log emission.
-    # Must be called before get_logger so cache_logger_on_first_use captures the
-    # configured processors (not stdlib fallback defaults).
-    configure_logging()
-    log = structlog.get_logger("smart_copilot.scheduler")
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [scheduler.run] %(message)s")
+    log = logging.getLogger("smart_copilot.scheduler")
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         prune_login_attempts,
@@ -35,11 +30,11 @@ async def _amain() -> int:
         coalesce=True,
     )
     scheduler.start()
-    log.info("scheduler started", jobs=["prune_login_attempts (hourly)"])
+    log.info("scheduler started; jobs registered: prune_login_attempts (hourly)")
     stop_event = asyncio.Event()
 
     def _stop(signum, _frame):  # noqa: ARG001
-        log.info("scheduler shutting down", signal=signum)
+        log.info("received signal %s; shutting down", signum)
         stop_event.set()
 
     signal.signal(signal.SIGTERM, _stop)

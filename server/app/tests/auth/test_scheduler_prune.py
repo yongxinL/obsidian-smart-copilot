@@ -2,11 +2,18 @@
 from __future__ import annotations
 
 import pytest
+<<<<<<< HEAD
 from app.scheduler.jobs.prune_login_attempts import prune_login_attempts
+=======
+>>>>>>> worktree-agent-ab6ce35163019e143
 from sqlalchemy import text
 
 from app.auth.context import system_operation_context
 from app.dependencies import session_with_rls
+<<<<<<< HEAD
+=======
+from app.scheduler.jobs.prune_login_attempts import prune_login_attempts
+>>>>>>> worktree-agent-ab6ce35163019e143
 
 pytestmark = [pytest.mark.auth, pytest.mark.integration]
 

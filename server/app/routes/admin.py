@@ -6,7 +6,6 @@
                                   operation (rotate-Fernet, delete-user) lands in
                                   Phase 1d/6 with the same Depends pattern.
 """
-
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -47,12 +46,7 @@ async def reauth(
         # D-14 — reserved for future factor; reject other values explicitly
         raise HTTPException(
             status_code=501,
-            detail={
-                "error": {
-                    "code": "not_implemented",
-                    "message": "factor 'password' is the only supported value in v1",
-                }
-            },
+            detail={"error": {"code": "not_implemented", "message": "factor 'password' is the only supported value in v1"}},
         )
     if ctx.session_id is None:
         raise HTTPException(status_code=403, detail=admin_reauth_required_envelope())
@@ -63,17 +57,11 @@ async def reauth(
             status_code=401,
             detail={"error": {"code": "unauthorized", "message": "user not found"}},
         )
-    ip = getattr(request.state, "client_ip", None) or (
-        request.client.host if request.client else "unknown"
-    )
+    ip = getattr(request.state, "client_ip", None) or (request.client.host if request.client else "unknown")
     if not await verify_password(user.password_hash, payload.password):
         await write_audit_log(
-            session,
-            ctx,
-            action="admin_reauth_failed",
-            target_kind="session",
-            target_id=str(ctx.session_id),
-            ip=ip,
+            session, ctx, action="admin_reauth_failed", target_kind="session",
+            target_id=str(ctx.session_id), ip=ip,
             user_agent=request.headers.get("user-agent"),
         )
         await session.commit()
@@ -81,23 +69,14 @@ async def reauth(
             status_code=401,
             detail={"error": {"code": "unauthorized", "message": "invalid password"}},
         )
-    await set_admin_fresh(
-        session, session_id=ctx.session_id, minutes=settings.admin_fresh_window_minutes
-    )
+    await set_admin_fresh(session, session_id=ctx.session_id, minutes=settings.admin_fresh_window_minutes)
     await write_audit_log(
-        session,
-        ctx,
-        action="admin_reauth",
-        target_kind="session",
-        target_id=str(ctx.session_id),
-        ip=ip,
+        session, ctx, action="admin_reauth", target_kind="session",
+        target_id=str(ctx.session_id), ip=ip,
         user_agent=request.headers.get("user-agent"),
     )
     await session.commit()
-    return {
-        "status": "ok",
-        "freshness_window_minutes": settings.admin_fresh_window_minutes,
-    }
+    return {"status": "ok", "freshness_window_minutes": settings.admin_fresh_window_minutes}
 
 
 @router.post("/_demo_destructive")

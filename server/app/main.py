@@ -9,9 +9,8 @@ HTTPException(detail={"error": {"code": ..., "message": ...}}). FastAPI's
 default handler wraps that in {"detail": ...} — clients then see
 body["detail"]["error"]["code"]. We register a global exception handler that
 returns JSONResponse(content=exc.detail) so clients see body["error"]["code"]
-directly. Tests in 07-06 and Plan 08 acceptance assert against this flat shape.
+directly.
 """
-
 from __future__ import annotations
 
 import sys
@@ -39,9 +38,7 @@ def _fail_startup_if_missing_secrets() -> None:
         print(f"FATAL: {e}", file=sys.stderr)
         sys.exit(1)
     except ValueError as e:
-        print(
-            f"FATAL: SMARTCOPILOT_FERNET_KEY is set but invalid: {e}", file=sys.stderr
-        )
+        print(f"FATAL: SMARTCOPILOT_FERNET_KEY is set but invalid: {e}", file=sys.stderr)
         sys.exit(1)
     if not settings.jwt_signing_key:
         print(

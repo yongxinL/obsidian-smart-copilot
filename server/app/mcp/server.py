@@ -10,7 +10,6 @@ Until Phase 1d ships, that exits non-zero with NotImplementedError — which
 is the desired behavior (the MCP HTTP process is not part of the Phase 1b
 success criteria; it must just not break the container BUILD/IMPORT).
 """
-
 from __future__ import annotations
 
 from app.auth.core import validate_bearer  # noqa: F401 — D-21 seam
@@ -26,5 +25,4 @@ def main_stdio() -> int:
 
 if __name__ == "__main__":
     import sys
-
     sys.exit(main_http())

@@ -19,6 +19,13 @@ by having db_session commit/rollback between tests.
 from __future__ import annotations
 
 import os
+
+# Phase 1b: seed test-only secret env vars so app.main lifespan does not
+# sys.exit(1) when testcontainers spin up ASGI transport clients.
+# NOTE: SMARTCOPILOT_JWT_SIGNING_KEY uses the SMARTCOPILOT_ prefix for
+# consistency with SMARTCOPILOT_FERNET_KEY. pydantic-settings is case-insensitive
+# so jwt_signing_key also accepts JWT_SIGNING_KEY.
+import os as _os
 import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -34,6 +41,12 @@ from sqlalchemy.ext.asyncio import (
 from testcontainers.postgres import PostgresContainer
 
 from app.models import Base  # noqa: F401 — side-effect: registers all 32 tables
+
+_fernet_key = "T8YTnEbNGq9aYUOA3LjL6PLghE15Vrn-uFO3chFiOEU="
+_jwt_key = "test-signing-key-min-32-bytes-aaaaaaaaaaaaaaaaaaaa"
+_os.environ.setdefault("SMARTCOPILOT_FERNET_KEY", _fernet_key)
+_os.environ.setdefault("SMARTCOPILOT_JWT_SIGNING_KEY", _jwt_key)
+del _fernet_key, _jwt_key, _os
 
 POSTGRES_IMAGE = "pgvector/pgvector:pg16"
 SERVER_DIR = Path(__file__).resolve().parent.parent.parent  # server/

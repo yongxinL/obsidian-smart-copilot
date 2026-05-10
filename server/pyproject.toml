@@ -4,9 +4,6 @@ version = "0.0.0"
 description = "Smart Copilot self-hosted AI knowledge brain -- server"
 requires-python = ">=3.12,<3.13"
 
-[project.scripts]
-smartcopilot = "app.cli.main:main"
-
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -43,6 +40,6 @@ testpaths = ["app/tests"]
 addopts = "-ra --strict-markers"
 markers = [
     "integration: integration tests requiring testcontainers (PostgreSQL via Docker)",
-    "unit: pure unit tests, no testcontainers required",
-    "auth: Phase 1b auth + RLS tests (covers AUTH-01..10, TEST-02)",
+    "auth: authentication and authorization tests",
+    "unit: unit tests with no external dependencies",
 ]

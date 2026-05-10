@@ -9,7 +9,6 @@ the job is idempotent and re-registers on every supervisord restart.
 CLAUDE.md: module-level function (no closures, no lambdas) — APScheduler 3.x
 SQLAlchemyJobStore pickles job args.
 """
-
 from __future__ import annotations
 
 from sqlalchemy import text
@@ -21,9 +20,7 @@ from app.settings import settings
 
 async def prune_login_attempts() -> int:
     """DELETE rows older than retention_hours. Returns the number deleted."""
-    ctx = system_operation_context(
-        request_id="prune_login_attempts", client_name="scheduler"
-    )
+    ctx = system_operation_context(request_id="prune_login_attempts", client_name="scheduler")
     deleted = 0
     async for session in session_with_rls(ctx):
         result = await session.execute(

@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import pytest
+<<<<<<< HEAD
 from app.routes.admin import router as admin_router
 from app.routes.auth import router as auth_router
+=======
+>>>>>>> worktree-agent-ab6ce35163019e143
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -11,6 +14,11 @@ from sqlalchemy import text
 from app.auth.context import system_operation_context
 from app.auth.middleware import TrustedProxyMiddleware
 from app.dependencies import session_with_rls
+<<<<<<< HEAD
+=======
+from app.routes.admin import router as admin_router
+from app.routes.auth import router as auth_router
+>>>>>>> worktree-agent-ab6ce35163019e143
 
 pytestmark = [pytest.mark.auth, pytest.mark.integration]
 

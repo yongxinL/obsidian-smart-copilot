@@ -5,7 +5,6 @@ System-internal table for sliding-window login throttling. Per D-06, NOT under
 user RLS — written by the auth path regardless of who is authenticated.
 Per D-07, one file per domain.
 """
-
 from __future__ import annotations
 
 from sqlalchemy import BigInteger, DateTime, String, Text
@@ -20,7 +19,9 @@ class LoginAttempt(Base):
 
     __tablename__ = "login_attempts"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
     # No FK — usernames may not match an existing user (D-06)
     username: Mapped[str] = mapped_column(String(64), nullable=False)
     ip: Mapped[object] = mapped_column(INET, nullable=False)

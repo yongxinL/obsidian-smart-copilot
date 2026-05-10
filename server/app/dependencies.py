@@ -32,7 +32,7 @@ from app.auth.context import OperationContext
 from app.database import async_session_factory
 
 if TYPE_CHECKING:
-    pass  # noqa: B008 — type-check-only imports; no mutable default
+    pass
 
 
 async def get_operation_context(request: Request) -> OperationContext:
@@ -73,7 +73,7 @@ async def get_operation_context(request: Request) -> OperationContext:
 
 
 async def get_db_session(
-    ctx: OperationContext = Depends(get_operation_context),  # noqa: B008 — FastAPI DI pattern
+    ctx: OperationContext = Depends(get_operation_context),
 ) -> AsyncIterator[AsyncSession]:
     """Open an async session, SET 3 GUCs, yield, RESET in finally."""
     async with async_session_factory() as session:

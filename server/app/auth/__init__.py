@@ -1,1 +1,1 @@
-"""Auth subsystem: argon2, JWT, MCP bearer, OperationContext, RLS GUC."""
+"""Auth package (D-17: all auth logic, pure transport-neutral core)."""

@@ -10,7 +10,6 @@ All DB sessions are opened via `session_with_rls(...)` — pre-auth reads use
 own context.
 Rate limit: 10 failures / 15 min / (ip, username) — D-05–D-08.
 """
-
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -55,9 +54,7 @@ class RefreshIn(BaseModel):
 
 
 def _client_ip(request: Request) -> str:
-    return getattr(request.state, "client_ip", None) or (
-        request.client.host if request.client else "unknown"
-    )
+    return getattr(request.state, "client_ip", None) or (request.client.host if request.client else "unknown")
 
 
 def _system_ctx(request: Request, *, action: str) -> OperationContext:
@@ -80,23 +77,14 @@ async def login(payload: LoginIn, request: Request) -> TokenPair:
         if retry is not None:
             raise HTTPException(
                 status_code=429,
-                detail={
-                    "error": {
-                        "code": "rate_limited",
-                        "message": "too many login failures",
-                        "details": {"retry_after_seconds": retry},
-                    }
-                },
+                detail={"error": {"code": "rate_limited", "message": "too many login failures",
+                                 "details": {"retry_after_seconds": retry}}},
             )
 
     # Record attempt in OWN transaction BEFORE verify (Landmine #9)
-    async for session in session_with_rls(
-        _system_ctx(request, action="record-attempt")
-    ):
+    async for session in session_with_rls(_system_ctx(request, action="record-attempt")):
         await record_login_attempt(
-            session,
-            ip=ip,
-            username=username,
+            session, ip=ip, username=username,
             request_id=request.headers.get("x-request-id"),
             user_agent=request.headers.get("user-agent"),
         )
@@ -112,47 +100,28 @@ async def login(payload: LoginIn, request: Request) -> TokenPair:
             await verify_password(_DUMMY_HASH, payload.password)
             raise HTTPException(
                 status_code=401,
-                detail={
-                    "error": {"code": "unauthorized", "message": "invalid credentials"}
-                },
+                detail={"error": {"code": "unauthorized", "message": "invalid credentials"}},
             )
         if not await verify_password(user.password_hash, payload.password):
             raise HTTPException(
                 status_code=401,
-                detail={
-                    "error": {"code": "unauthorized", "message": "invalid credentials"}
-                },
+                detail={"error": {"code": "unauthorized", "message": "invalid credentials"}},
             )
 
         # Success: wipe attempts (D-08), issue session pair, audit.
         await wipe_login_attempts(session, ip=ip, username=username)
         user_ctx = OperationContext(
-            user_id=user.id,
-            role=user.role,
-            transport="rest",
-            remote=True,
-            client_name=ip,
-            request_id=request.headers.get("x-request-id") or "login",
+            user_id=user.id, role=user.role, transport="rest", remote=True,
+            client_name=ip, request_id=request.headers.get("x-request-id") or "login",
         )
-        access, refresh, sess_id = await issue_session_pair(
-            session, user_ctx, user=user
-        )
+        access, refresh, sess_id = await issue_session_pair(session, user_ctx, user=user)
         ctx_with_session = OperationContext(
-            user_id=user.id,
-            role=user.role,
-            transport="rest",
-            remote=True,
-            client_name=ip,
-            request_id=user_ctx.request_id,
-            session_id=sess_id,
+            user_id=user.id, role=user.role, transport="rest", remote=True,
+            client_name=ip, request_id=user_ctx.request_id, session_id=sess_id,
         )
         await write_audit_log(
-            session,
-            ctx_with_session,
-            action="login",
-            target_kind="session",
-            target_id=str(sess_id),
-            ip=ip,
+            session, ctx_with_session, action="login", target_kind="session",
+            target_id=str(sess_id), ip=ip,
             user_agent=request.headers.get("user-agent"),
         )
         await session.commit()
@@ -175,18 +144,11 @@ async def refresh(payload: RefreshIn, request: Request) -> TokenPair:
     )
     async for session in session_with_rls(anon_ctx):
         try:
-            access, new_refresh = await rotate_refresh(
-                session, anon_ctx, raw_refresh=payload.refresh_token
-            )
+            access, new_refresh = await rotate_refresh(session, anon_ctx, raw_refresh=payload.refresh_token)
         except InvalidToken:
             raise HTTPException(
                 status_code=401,
-                detail={
-                    "error": {
-                        "code": "unauthorized",
-                        "message": "invalid refresh token",
-                    }
-                },
+                detail={"error": {"code": "unauthorized", "message": "invalid refresh token"}},
             ) from None
         await session.commit()
     return TokenPair(access_jwt=access, refresh_token=new_refresh)

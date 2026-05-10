@@ -1,1 +1,1 @@
-"""Transport-agnostic service layer. Services take OperationContext, never FastAPI request types."""
+"""Services package (transport-agnostic)."""
