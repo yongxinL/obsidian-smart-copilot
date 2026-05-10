@@ -26,7 +26,7 @@ services:
     image: dpage/pgadmin4:latest
     container_name: smart-copilot-pgadmin-dev
     environment:
-      PGADMIN_DEFAULT_EMAIL: dev@smart-copilot.local
+      PGADMIN_DEFAULT_EMAIL: admin@smartcopilot.dev
       PGADMIN_DEFAULT_PASSWORD: dev
       PGADMIN_CONFIG_SERVER_MODE: "False"
     ports:
