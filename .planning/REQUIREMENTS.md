@@ -14,9 +14,9 @@
 - [ ] **INFRA-01**: System runs as a single Docker container managed by `supervisord` with `nodaemon=true` as PID 1
 - [ ] **INFRA-02**: Container manages at minimum: `postgres`, `fastapi` (uvicorn), `mcp-http`, `apscheduler`, `watchdog` processes under supervisord
 - [ ] **INFRA-03**: PostgreSQL 16 with `pgvector` extension is the sole primary datastore — no Redis, Celery, or external broker
-- [ ] **INFRA-04**: Repo is a `pnpm` workspaces monorepo with Python under `server/app/` (src-style) and Electron client stub under `clients/desktop/`
-- [ ] **INFRA-05**: Node 20 LTS and Python 3.12 are pinned via `.nvmrc` and `pyproject.toml` / `.python-version`
-- [ ] **INFRA-06**: Ruff is the sole Python linter/formatter; pre-commit hooks enforce formatting
+- [x] **INFRA-04**: Repo is a `pnpm` workspaces monorepo with Python under `server/app/` (src-style) and Electron client stub under `clients/desktop/`
+- [x] **INFRA-05**: Node 20 LTS and Python 3.12 are pinned via `.nvmrc` and `pyproject.toml` / `.python-version`
+- [x] **INFRA-06**: Ruff is the sole Python linter/formatter; pre-commit hooks enforce formatting
 - [ ] **INFRA-07**: Backend is Python 3.12, FastAPI, async-first, using `asyncpg` for runtime and `psycopg2` for Alembic migrations only
 - [ ] **INFRA-08**: Volumes defined for `/data` (PostgreSQL), `/vaults` (markdown), `/config`
 

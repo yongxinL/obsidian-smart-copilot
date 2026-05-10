@@ -38,7 +38,7 @@ Decimal sub-phases execute in order within their parent integer phase.
   4. `pytest` runs against a real PostgreSQL test database (no DB mocks); the test suite passes with zero failures on a clean clone
   5. Ruff formatting check and pre-commit hooks pass on the initial scaffold commit
 **Plans**: 4 plans
-- [ ] 01a-01-PLAN.md — Monorepo scaffold + Python tooling + dev compose (INFRA-04, INFRA-05, INFRA-06)
+- [x] 01a-01-PLAN.md — Monorepo scaffold + Python tooling + dev compose (INFRA-04, INFRA-05, INFRA-06)
 - [ ] 01a-02-PLAN.md — Domain models package (27 model files, 32 tables) (INFRA-07)
 - [ ] 01a-03-PLAN.md — App runtime + Alembic + test harness (INFRA-07, INFRA-03, TEST-01)
 - [ ] 01a-04-PLAN.md — Production Dockerfile + supervisord + boot verification (INFRA-01, INFRA-02, INFRA-03, INFRA-08)
