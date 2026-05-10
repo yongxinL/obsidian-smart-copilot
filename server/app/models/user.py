@@ -8,6 +8,7 @@ from __future__ import annotations
 import uuid  # noqa: F401 (used in Mapped[uuid.UUID] type hints)
 
 from sqlalchemy import UUID, Boolean, String, Text
+from sqlalchemy import true as sql_true
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,5 +34,5 @@ class User(Base, TimestampMixin):
         user_role_enum, nullable=False, server_default="user"
     )
     is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="true"
+        Boolean, nullable=False, server_default=sql_true()
     )

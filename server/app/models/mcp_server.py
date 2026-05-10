@@ -8,6 +8,7 @@ from __future__ import annotations
 import uuid  # noqa: F401
 
 from sqlalchemy import UUID, Boolean, String, Text
+from sqlalchemy import true as sql_true
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.orm import Mapped, mapped_column
@@ -40,5 +41,5 @@ class MCPServer(Base, TimestampMixin):
         ARRAY(Text), nullable=False, server_default="{}"
     )
     enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="true"
+        Boolean, nullable=False, server_default=sql_true()
     )

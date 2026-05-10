@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import Field
+import warnings
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +26,21 @@ class Settings(BaseSettings):
     smartcopilot_fernet_key: str = Field(default="")
     smartcopilot_host_url: str = Field(default="http://localhost:8000")
     debug: bool = Field(default=False)
+
+    @field_validator("smartcopilot_fernet_key")
+    @classmethod
+    def validate_fernet_key(cls, v: str) -> str:
+        if not v:
+            warnings.warn(
+                "smartcopilot_fernet_key is not set. Provider key encryption will fail.",
+                UserWarning,
+                stacklevel=2,
+            )
+        elif len(v) < 32:
+            raise ValueError(
+                "smartcopilot_fernet_key must be at least 32 characters (44 base64 chars)"
+            )
+        return v
 
 
 settings = Settings()

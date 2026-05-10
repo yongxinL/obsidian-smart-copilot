@@ -8,6 +8,7 @@ from __future__ import annotations
 import uuid  # noqa: F401
 
 from sqlalchemy import UUID, Boolean, ForeignKey, Text
+from sqlalchemy import false as sql_false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -31,5 +32,5 @@ class Memory(Base, TimestampMixin):
         nullable=True,
     )
     archived: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
+        Boolean, nullable=False, server_default=sql_false()
     )

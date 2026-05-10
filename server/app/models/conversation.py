@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime  # noqa: F401
 
 from sqlalchemy import UUID, Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import false as sql_false
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -49,7 +50,7 @@ class Conversation(Base, TimestampMixin):
         mcp_mode_enum, nullable=False, server_default="client"
     )
     web_search_enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
+        Boolean, nullable=False, server_default=sql_false()
     )
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

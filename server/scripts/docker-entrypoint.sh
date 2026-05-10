@@ -28,9 +28,9 @@ if [ -z "$(ls -A "$DATA_DIR" 2>/dev/null)" ]; then
 
   echo "[entrypoint] Starting postgres temporarily to create role/db..."
   su postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D $DATA_DIR -o '-c config_file=/etc/postgresql/postgresql.conf' -w start"
-  su postgres -c "psql -v ON_ERROR_STOP=1 --command \"CREATE USER ${POSTGRES_USER} WITH SUPERUSER PASSWORD '${POSTGRES_PASSWORD}';\""
-  su postgres -c "psql -v ON_ERROR_STOP=1 --command \"CREATE DATABASE ${POSTGRES_DB} OWNER ${POSTGRES_USER};\""
-  su postgres -c "psql -v ON_ERROR_STOP=1 --dbname ${POSTGRES_DB} --command \"CREATE EXTENSION IF NOT EXISTS vector;\""
+  su postgres -c "psql -v ON_ERROR_STOP=1 --command \"CREATE USER $(printf '%s' \"$POSTGRES_USER\") WITH SUPERUSER PASSWORD '$(printf '%s' \"$POSTGRES_PASSWORD\" | sed \"s/'/''/g\")';\""
+  su postgres -c "psql -v ON_ERROR_STOP=1 --command \"CREATE DATABASE $(printf '%s' \"$POSTGRES_DB\") OWNER $(printf '%s' \"$POSTGRES_USER\");\""
+  su postgres -c "psql -v ON_ERROR_STOP=1 --dbname=$(printf '%s' \"$POSTGRES_DB\") --command \"CREATE EXTENSION IF NOT EXISTS vector;\""
   su postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D $DATA_DIR -m fast -w stop"
   echo "[entrypoint] First-boot initialization complete."
 else
