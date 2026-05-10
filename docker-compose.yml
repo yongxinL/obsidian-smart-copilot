@@ -1,0 +1,42 @@
+# Development docker-compose — inner-loop convenience only.
+# Per D-10/D-11/D-12: dev runs PostgreSQL+pgvector + pgAdmin as separate containers;
+# the Python app runs OUTSIDE compose with `uvicorn --reload` against this DB.
+# Production uses the monolithic supervisord image (server/Dockerfile, Plan 03).
+# Mailpit is INTENTIONALLY ABSENT — deferred per CONTEXT.md "Deferred Ideas".
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: smart-copilot-postgres-dev
+    environment:
+      POSTGRES_USER: smartcopilot
+      POSTGRES_PASSWORD: smartcopilot
+      POSTGRES_DB: smartcopilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartcopilot -d smartcopilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: smart-copilot-pgadmin-dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: dev@smart-copilot.local
+      PGADMIN_DEFAULT_PASSWORD: dev
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+
+volumes:
+  pgdata:
+  pgadmin:
