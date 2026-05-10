@@ -1,0 +1,1 @@
+"""Smart Copilot test suite."""
