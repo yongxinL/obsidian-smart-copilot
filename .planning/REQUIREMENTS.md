@@ -22,16 +22,16 @@
 
 ### Authentication & Authorization (AUTH)
 
-- [ ] **AUTH-01**: User accounts with username, email, argon2-cffi password hashing (memory ≥ 64 MiB, iterations ≥ 3)
-- [ ] **AUTH-02**: Session management: `/auth/login` returns `{access_jwt, refresh_token}`; access JWT is short-lived; refresh token stored as SHA-256 hash and revocable
-- [ ] **AUTH-03**: Login rate-limited at 10 failures / 15 minutes / IP+username pair
-- [ ] **AUTH-04**: MCP bearer tokens — per-user, named, 256-bit random, presented once on creation, stored as SHA-256 hash, revocable within 5 seconds
-- [ ] **AUTH-05**: MCP tokens record `last_used_at` on every successful auth
-- [ ] **AUTH-06**: Two RBAC roles only: `admin` and `user`; all admin operations audited in `audit_log`
-- [ ] **AUTH-07**: Step-up fresh authentication for destructive admin operations (valid within last 60 minutes); `POST /api/v1/admin/reauth` endpoint
-- [ ] **AUTH-08**: Trusted proxy header support (`SMARTCOPILOT_TRUST_PROXY`) with IP allowlist for `X-Forwarded-For` forwarding
-- [ ] **AUTH-09**: API keys for third-party providers encrypted at rest using Fernet; encrypted column never returned in any API response
-- [ ] **AUTH-10**: Per-user and shared API key resolution; resolution order defined in PRD Section 24.2
+- [x] **AUTH-01**: User accounts with username, email, argon2-cffi password hashing (memory ≥ 64 MiB, iterations ≥ 3)
+- [x] **AUTH-02**: Session management: `/auth/login` returns `{access_jwt, refresh_token}`; access JWT is short-lived; refresh token stored as SHA-256 hash and revocable
+- [x] **AUTH-03**: Login rate-limited at 10 failures / 15 minutes / IP+username pair
+- [x] **AUTH-04**: MCP bearer tokens — per-user, named, 256-bit random, presented once on creation, stored as SHA-256 hash, revocable within 5 seconds
+- [x] **AUTH-05**: MCP tokens record `last_used_at` on every successful auth
+- [x] **AUTH-06**: Two RBAC roles only: `admin` and `user`; all admin operations audited in `audit_log`
+- [x] **AUTH-07**: Step-up fresh authentication for destructive admin operations (valid within last 60 minutes); `POST /api/v1/admin/reauth` endpoint
+- [x] **AUTH-08**: Trusted proxy header support (`SMARTCOPILOT_TRUST_PROXY`) with IP allowlist for `X-Forwarded-For` forwarding
+- [x] **AUTH-09**: API keys for third-party providers encrypted at rest using Fernet; encrypted column never returned in any API response
+- [x] **AUTH-10**: Per-user and shared API key resolution; resolution order defined in PRD Section 24.2
 
 ### Vault & Page Management (VAULT)
 
@@ -204,7 +204,7 @@
 ### Testing (TEST)
 
 - [ ] **TEST-01**: `pytest + pytest-asyncio` test suite executing against a real PostgreSQL test database (no mocks for DB)
-- [ ] **TEST-02**: RLS isolation tests: assert that exiting a request scope leaves no session GUC leaked across pooled connections
+- [x] **TEST-02**: RLS isolation tests: assert that exiting a request scope leaves no session GUC leaked across pooled connections
 - [ ] **TEST-03**: MCP stdio cleanliness test: assert no unexpected stdout output in stdio mode
 - [ ] **TEST-04**: Phase acceptance tests per PRD Sections 6.1–6.7 (one per phase)
 - [ ] **TEST-05**: Golden query eval suite for retrieval regression: Precision@K, Recall@K, MRR, nDCG@K, p95 latency

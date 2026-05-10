@@ -215,7 +215,7 @@ Phases execute in order: 1a → 1b → 1c → 1d → 2a → 2b → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1a. Container + Data Layer | 4/4 | Complete | 2026-05-10 |
-| 1b. Auth + Security Primitives | 8/8 | Complete   | 2026-05-10 |
+| 1b. Auth + Security Primitives | 8/8 | Complete    | 2026-05-10 |
 | 1c. Vault + Watchdog Indexer | 0/8 | Not started | - |
 | 1d. MCP Server + REST API + CLI | 0/6 | Not started | - |
 | 2a. LLM Gateway + Hybrid RAG Pipeline | 0/TBD | Not started | - |
