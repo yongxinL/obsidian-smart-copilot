@@ -41,7 +41,7 @@ Decimal sub-phases execute in order within their parent integer phase.
 - [x] 01a-01-PLAN.md — Monorepo scaffold + Python tooling + dev compose (INFRA-04, INFRA-05, INFRA-06)
 - [x] 01a-02-PLAN.md — Domain models package (27 model files, 32 tables) (INFRA-07)
 - [x] 01a-03-PLAN.md — App runtime + Alembic + test harness (INFRA-07, INFRA-03, TEST-01)
-- [ ] 01a-04-PLAN.md — Production Dockerfile + supervisord + boot verification (INFRA-01, INFRA-02, INFRA-03, INFRA-08)
+- [x] 01a-04-PLAN.md — Production Dockerfile + supervisord + boot verification (INFRA-01, INFRA-02, INFRA-03, INFRA-08)
 **UI hint**: no
 
 ### Phase 1b: Auth + Security Primitives
@@ -214,7 +214,7 @@ Phases execute in order: 1a → 1b → 1c → 1d → 2a → 2b → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1a. Container + Data Layer | 3/4 | In Progress|  |
+| 1a. Container + Data Layer | 4/4 | Complete | 2026-05-10 |
 | 1b. Auth + Security Primitives | 0/8 | Not started | - |
 | 1c. Vault + Watchdog Indexer | 0/8 | Not started | - |
 | 1d. MCP Server + REST API + CLI | 0/6 | Not started | - |
