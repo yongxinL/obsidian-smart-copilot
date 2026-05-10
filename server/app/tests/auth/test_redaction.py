@@ -4,7 +4,6 @@ from __future__ import annotations
 import pytest
 
 from app.logging.redaction import (
-    REDACTED_KEYS,
     REDACTED_PLACEHOLDER,
     redact_processor,
 )
