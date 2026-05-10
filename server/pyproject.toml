@@ -42,4 +42,5 @@ markers = [
     "integration: integration tests requiring testcontainers (PostgreSQL via Docker)",
     "unit: pure unit tests, no testcontainers required",
     "auth: Phase 1b auth + RLS tests (covers AUTH-01..10, TEST-02)",
+    "vault: Phase 1c vault + watchdog indexer tests (covers VAULT-01..11, IDX-01..04)",
 ]
