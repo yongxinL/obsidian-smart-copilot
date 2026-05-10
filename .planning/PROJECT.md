@@ -12,12 +12,15 @@ The agent can instantly query, write, and reason over the user's entire knowledg
 
 ### Validated
 
-- [ ] No phases validated yet (reset to Phase 1a on 2026-05-09)
+- [x] Single Docker container deployment with supervisord (PID 1), bundled PostgreSQL 16 + pgvector, FastAPI, APScheduler, and watchdog — **Phase 1a**
+- [x] MCP server in both stdio and HTTP (Streamable HTTP, port 8787) modes from Phase 1 — **Phase 1a**
+- [x] Fernet-encrypted API keys at rest, argon2-cffi password hashing — **Phase 1b**
+- [x] CLI admin tools (`smartcopilot` binary) and admin REST endpoints — **Phase 1b**
 
 ### Active
 
-- [ ] Single Docker container deployment with supervisord (PID 1), bundled PostgreSQL 16 + pgvector, FastAPI, APScheduler, and watchdog
-- [ ] MCP server in both stdio and HTTP (Streamable HTTP, port 8787) modes from Phase 1
+- [ ] REST + WebSocket API with 1:1 parity with MCP tool surface
+- [ ] Multi-tenant page storage with PostgreSQL RLS per-user isolation
 - [ ] REST + WebSocket API with 1:1 parity with MCP tool surface
 - [ ] Multi-tenant page storage with PostgreSQL RLS per-user isolation
 - [ ] Compiled-truth + timeline page convention (above-the-line rewritable, below-the-line append-only)
@@ -100,4 +103,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-09 — reset to Phase 1a (no phases validated)*
+*Last updated: 2026-05-10 — Phase 1b complete (2/11 phases validated)*
