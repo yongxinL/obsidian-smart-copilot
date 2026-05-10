@@ -32,3 +32,6 @@ class Session(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    admin_fresh_until: Mapped[object | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
