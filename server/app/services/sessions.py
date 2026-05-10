@@ -42,13 +42,12 @@ async def record_login_attempt(
     session: AsyncSession, *, ip: str, username: str, request_id: str | None = None, user_agent: str | None = None
 ) -> None:
     """Landmine #9: INSERT in own transaction; commit before password verify."""
-    async with session.begin():
-        session.add(LoginAttempt(
-            ip=ip,
-            username=username,
-            user_agent=user_agent,
-            request_id=request_id,
-        ))
+    session.add(LoginAttempt(
+        ip=ip,
+        username=username,
+        user_agent=user_agent,
+        request_id=request_id,
+    ))
 
 
 async def check_rate_limit(
