@@ -37,6 +37,23 @@ def _register_vector_type(dbapi_connection, connection_record):  # noqa: ARG001
     dbapi_connection.run_async(register_vector)
 
 
+@event.listens_for(engine.sync_engine, "reset")
+def _on_pool_reset(dbapi_conn, connection_record, reset_state):  # noqa: ARG001
+    """Defense-in-depth: scrub app.* GUCs on connection check-in (Landmine #1).
+
+    Even if get_db_session's finally:-block fails (exception, future code path
+    change), this listener fires on every pool reset. Synchronous via dbapi
+    cursor — runs before the connection is reused by another request.
+    """
+    try:
+        with dbapi_conn.cursor() as cur:
+            cur.execute("RESET app.current_user_id")
+            cur.execute("RESET app.current_user_role")
+            cur.execute("RESET app.request_id")
+    except Exception:  # noqa: BLE001 — never block pool reset
+        pass
+
+
 async_session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
     engine,
     class_=AsyncSession,
