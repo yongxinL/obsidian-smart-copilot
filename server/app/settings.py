@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     smartcopilot_host_url: str = Field(default="http://localhost:8000")
     debug: bool = Field(default=False)
 
+    # JWT (D-01, D-02)
+    jwt_signing_key: str = Field(default="")
+    jwt_access_ttl_seconds: int = Field(default=900)
+    jwt_refresh_ttl_seconds: int = Field(default=2592000)
+
+    # Argon2 (D-23 — PRD minima)
+    argon2_time_cost: int = Field(default=3)
+    argon2_memory_cost: int = Field(default=64 * 1024)
+    argon2_parallelism: int = Field(default=1)
+
     @field_validator("smartcopilot_fernet_key")
     @classmethod
     def validate_fernet_key(cls, v: str) -> str:
