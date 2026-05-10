@@ -30,6 +30,7 @@ from app.models import (
     job,  # noqa: F401
     link,  # noqa: F401
     llm_usage,  # noqa: F401
+    login_attempt,  # noqa: F401
     mcp_server,  # noqa: F401
     mcp_token,  # noqa: F401
     memory,  # noqa: F401
