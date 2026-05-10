@@ -13,7 +13,7 @@ use a per-user GUC.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from jose import JWTError
 from sqlalchemy import select
@@ -78,7 +78,7 @@ async def validate_refresh(refresh_token: str | None) -> AuthResult:
         if row is None:
             return AuthResult(error="invalid_token")
         sess, user = row
-        if sess.expires_at is not None and sess.expires_at < datetime.now(UTC):
+        if sess.expires_at is not None and sess.expires_at < datetime.now(timezone.utc):
             return AuthResult(error="invalid_token")
         if not user.is_active:
             return AuthResult(error="invalid_token")

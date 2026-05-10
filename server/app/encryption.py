@@ -6,7 +6,7 @@ MultiFernet is wired from day 1 so rotation is a one-line list extension later.
 Landmine #4: decrypt_provider_key MUST NOT pass ttl= — Fernet's TTL is
 "seconds since ciphertext was created", which would silently expire valid
 at-rest keys. Default ttl=None disables expiry. CI grep gate in Plan 08
-rejects any call that passes ttl= to the decrypt method.
+rejects any decrypt(...,ttl=...) call.
 """
 from __future__ import annotations
 
@@ -58,10 +58,10 @@ def encrypt_provider_key(plaintext: str) -> bytes:
 def decrypt_provider_key(ciphertext: bytes) -> str:
     """Decrypt a stored provider key.
 
-    IMPORTANT (Landmine #4): do NOT add a ttl keyword argument to the decrypt
-    call below. Provider keys are at-rest with no expiry — Fernet's time-to-live
-    check would silently expire valid stored keys, breaking all LLM calls 24 h
-    after key creation. Omitting the keyword (the default) disables expiry.
+    IMPORTANT (Landmine #4): do NOT pass ttl=. Provider keys are at-rest with
+    no expiry — Fernet's TTL would silently expire valid stored keys, breaking
+    all LLM calls 24h after key creation. Default ttl=None is correct for
+    at-rest secrets.
     """
     return fernet().decrypt(ciphertext).decode()
 
