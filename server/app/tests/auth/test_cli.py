@@ -1,5 +1,4 @@
 """CLI integration tests — drives the smartcopilot binary via app.cli.main:main."""
-
 from __future__ import annotations
 
 import asyncio
@@ -17,9 +16,7 @@ pytestmark = [pytest.mark.auth, pytest.mark.integration]
 
 async def _delete_user(username: str) -> None:
     async for session in session_with_rls(system_operation_context()):
-        await session.execute(
-            text("DELETE FROM users WHERE username = :u"), {"u": username}
-        )
+        await session.execute(text("DELETE FROM users WHERE username = :u"), {"u": username})
         await session.commit()
 
 

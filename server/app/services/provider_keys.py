@@ -3,7 +3,6 @@
 AUTH-09: encrypted_key column never returned in any API response (D-28 / Field(exclude=True)).
 AUTH-10 / PRD §24.2: resolution order = per-user key → system shared key → MissingProviderKey.
 """
-
 from __future__ import annotations
 
 import uuid
@@ -100,14 +99,8 @@ async def list_for_user(
     user_id: uuid.UUID,
 ) -> Sequence[ProviderKey]:
     return (
-        (
-            await session.execute(
-                select(ProviderKey).where(ProviderKey.user_id == user_id)
-            )
-        )
-        .scalars()
-        .all()
-    )
+        await session.execute(select(ProviderKey).where(ProviderKey.user_id == user_id))
+    ).scalars().all()
 
 
 async def revoke_provider_key(

@@ -1,5 +1,4 @@
 """AUTH-09 unit tests — Fernet provider-key encryption."""
-
 from __future__ import annotations
 
 import pytest
@@ -88,7 +87,9 @@ def test_decrypt_does_not_use_ttl() -> None:
         if not stripped_line.startswith("#"):
             stripped.append(line)
     body = "\n".join(stripped)
-    assert "ttl=" not in body, "decrypt_provider_key MUST NOT pass ttl= (Landmine #4)"
+    assert (
+        "ttl=" not in body
+    ), "decrypt_provider_key MUST NOT pass ttl= (Landmine #4)"
 
 
 def test_multifernet_decrypts_with_secondary_key(monkeypatch) -> None:

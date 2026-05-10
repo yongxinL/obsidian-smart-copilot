@@ -1,5 +1,4 @@
 """AUTH-04, AUTH-05 integration tests."""
-
 from __future__ import annotations
 
 import asyncio
@@ -38,9 +37,7 @@ async def test_token_plaintext_shown_once(seed_basic_user: uuid.UUID) -> None:
         assert len(row.token_hash) == 64  # sha256 hex
 
 
-async def test_token_stored_as_hash(
-    seed_basic_user: uuid.UUID, test_engine: AsyncEngine
-) -> None:  # noqa: ARG001
+async def test_token_stored_as_hash(seed_basic_user: uuid.UUID, test_engine: AsyncEngine) -> None:  # noqa: ARG001
     ctx = _ctx_for(seed_basic_user)
     async for session in session_with_rls(ctx):
         plaintext, row = await create_mcp_token(session, ctx, name="t2")
@@ -91,9 +88,7 @@ async def test_last_used_at_updates_on_verify(seed_basic_user: uuid.UUID) -> Non
         # Access last_used_at BEFORE session expires (still within async for scope)
         await sess2.refresh(v1)
         t1 = v1.last_used_at
-    await asyncio.sleep(
-        1.1
-    )  # PG now() resolution is sub-second; sleep ensures movement
+    await asyncio.sleep(1.1)  # PG now() resolution is sub-second; sleep ensures movement
     t2 = None
     async for sess3 in session_with_rls(ctx):
         await sess3.execute(text("SELECT 1"))  # ensure new transaction
@@ -101,6 +96,4 @@ async def test_last_used_at_updates_on_verify(seed_basic_user: uuid.UUID) -> Non
         await sess3.commit()
         await sess3.refresh(v2)
         t2 = v2.last_used_at
-    assert t2 is None or t1 is None or t2 > t1, (
-        "last_used_at must move forward on each verify"
-    )
+    assert t2 is None or t1 is None or t2 > t1, "last_used_at must move forward on each verify"

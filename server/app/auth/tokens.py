@@ -5,7 +5,6 @@ Landmine #2: algorithms=["HS256"] (non-empty list) is non-negotiable.
 Never algorithms=None, never algorithms=[]. Floor: python-jose >= 3.4.
 CVE-2024-33663 (alg confusion) and CVE-2025-61152 (alg=none) fixed in 3.4.
 """
-
 from __future__ import annotations
 
 import uuid

@@ -1,5 +1,4 @@
 """AUTH-09, AUTH-10 integration tests."""
-
 from __future__ import annotations
 
 import uuid
@@ -57,21 +56,15 @@ def test_encrypted_key_excluded_from_responses() -> None:
         encrypted_key=b"\x00\x01\x02",
     )
     dumped = resp.model_dump()
-    assert "encrypted_key" not in dumped, (
-        f"encrypted_key leaked into response: {dumped.keys()}"
-    )
+    assert "encrypted_key" not in dumped, f"encrypted_key leaked into response: {dumped.keys()}"
     # Also test JSON shape
     assert "encrypted_key" not in resp.model_dump_json()
 
 
-async def test_user_key_takes_precedence_over_shared(
-    seed_basic_user: uuid.UUID,
-) -> None:
+async def test_user_key_takes_precedence_over_shared(seed_basic_user: uuid.UUID) -> None:
     # System places a shared key
     async for s_sys in session_with_rls(system_operation_context()):
-        await set_provider_key(
-            s_sys, system_operation_context(), provider="openai", plaintext="sk-system"
-        )
+        await set_provider_key(s_sys, system_operation_context(), provider="openai", plaintext="sk-system")
         await s_sys.commit()
     # User places their own key
     ctx = _user_ctx(seed_basic_user)
@@ -88,29 +81,20 @@ async def test_user_key_takes_precedence_over_shared(
 
         from app.models.provider_key import ProviderKey
 
-        await s_cleanup_user.execute(
-            sa_delete(ProviderKey).where(ProviderKey.user_id == seed_basic_user)
-        )
+        await s_cleanup_user.execute(sa_delete(ProviderKey).where(ProviderKey.user_id == seed_basic_user))
         await s_cleanup_user.commit()
     async for s_cleanup_sys in session_with_rls(system_operation_context()):
         from sqlalchemy import delete as sa_delete
 
         from app.models.provider_key import ProviderKey
 
-        await s_cleanup_sys.execute(
-            sa_delete(ProviderKey).where(ProviderKey.user_id == SYSTEM_USER_ID)
-        )
+        await s_cleanup_sys.execute(sa_delete(ProviderKey).where(ProviderKey.user_id == SYSTEM_USER_ID))
         await s_cleanup_sys.commit()
 
 
 async def test_shared_key_fallback_when_no_user_key(seed_basic_user: uuid.UUID) -> None:
     async for s_sys in session_with_rls(system_operation_context()):
-        await set_provider_key(
-            s_sys,
-            system_operation_context(),
-            provider="anthropic",
-            plaintext="sk-shared",
-        )
+        await set_provider_key(s_sys, system_operation_context(), provider="anthropic", plaintext="sk-shared")
         await s_sys.commit()
     ctx = _user_ctx(seed_basic_user)
     # User has no key for anthropic; system fallback resolves
@@ -122,9 +106,7 @@ async def test_shared_key_fallback_when_no_user_key(seed_basic_user: uuid.UUID) 
 
         from app.models.provider_key import ProviderKey
 
-        await s_cleanup.execute(
-            sa_delete(ProviderKey).where(ProviderKey.user_id == SYSTEM_USER_ID)
-        )
+        await s_cleanup.execute(sa_delete(ProviderKey).where(ProviderKey.user_id == SYSTEM_USER_ID))
         await s_cleanup.commit()
 
 

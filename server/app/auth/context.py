@@ -5,7 +5,6 @@ NO FastAPI imports. NO SQLAlchemy imports. Imported by:
   * routes/* + middleware — build OperationContext from AuthResult
   * services/* — consume OperationContext (transport-agnostic)
 """
-
 from __future__ import annotations
 
 import uuid
@@ -20,7 +19,6 @@ class AuthResult:
     On success: user_id + role (+ session_id for refresh path, + mcp_token_id for bearer).
     On failure: error in {"invalid_token", "missing_auth", "service_unavailable"}.
     """
-
     user_id: uuid.UUID | None = None
     role: str | None = None
     session_id: uuid.UUID | None = None
@@ -35,7 +33,6 @@ class OperationContext:
     D-22: remote is transport-driven only — never derived from CWD or any heuristic.
       rest -> True, mcp_http -> True, mcp_stdio -> False, cli -> False, system -> False
     """
-
     user_id: uuid.UUID
     role: Literal["admin", "user"]
     transport: Literal["rest", "mcp_http", "mcp_stdio", "cli", "system"]

@@ -7,7 +7,6 @@ Tests validate:
   - validate_refresh and validate_bearer return AuthResult (unit-level contract)
   - No fastapi/starlette imports in auth/core module
 """
-
 from __future__ import annotations
 
 import inspect
@@ -58,11 +57,8 @@ class TestValidateJwtContract:
         result = validate_jwt("not.a.valid.jwt")
         assert result.error is not None
 
-    def test_valid_jwt_returns_auth_result_with_user_id_and_role(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_valid_jwt_returns_auth_result_with_user_id_and_role(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import app.settings as _settings
-
         monkeypatch.setattr(_settings.settings, "jwt_signing_key", _TEST_SIGNING_KEY)
 
         from app.auth.context import AuthResult
@@ -82,12 +78,9 @@ class TestValidateJwtContract:
         assert result.user_id == user_id
         assert result.role == "user"
 
-    def test_valid_jwt_with_sid_claim_sets_session_id(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_valid_jwt_with_sid_claim_sets_session_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """validate_jwt parses optional sid claim into AuthResult.session_id."""
         import app.settings as _settings
-
         monkeypatch.setattr(_settings.settings, "jwt_signing_key", _TEST_SIGNING_KEY)
 
         from app.auth.context import AuthResult
@@ -108,11 +101,8 @@ class TestValidateJwtContract:
         assert result.error is None
         assert result.session_id == session_id
 
-    def test_valid_jwt_without_sid_has_none_session_id(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_valid_jwt_without_sid_has_none_session_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import app.settings as _settings
-
         monkeypatch.setattr(_settings.settings, "jwt_signing_key", _TEST_SIGNING_KEY)
 
         from app.auth.core import validate_jwt
@@ -132,7 +122,6 @@ class TestValidateJwtContract:
     def test_invalid_role_returns_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A JWT with a non-standard role is rejected."""
         import app.settings as _settings
-
         monkeypatch.setattr(_settings.settings, "jwt_signing_key", _TEST_SIGNING_KEY)
 
         from jose import jwt
@@ -161,11 +150,9 @@ class TestNoFastAPIImport:
         source = inspect.getsource(core_module)
         # Check for import statements (not comments)
         import_lines = [
-            line
-            for line in source.splitlines()
-            if line.strip().startswith(
-                ("from fastapi", "import fastapi", "from starlette", "import starlette")
-            )
+            line for line in source.splitlines()
+            if line.strip().startswith(("from fastapi", "import fastapi",
+                                        "from starlette", "import starlette"))
         ]
         assert import_lines == [], f"D-17 violated: {import_lines}"
 

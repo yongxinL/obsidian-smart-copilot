@@ -4,7 +4,6 @@ Plaintext shown ONCE at issuance; storage column holds only the SHA-256 hex.
 Prefix scmcp_ makes leak detection / code search obvious.
 Entropy: 256 bits via secrets.token_urlsafe(32).
 """
-
 from __future__ import annotations
 
 import hashlib

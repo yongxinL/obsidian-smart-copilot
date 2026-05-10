@@ -1,5 +1,4 @@
 """smartcopilot provider key — Phase 1b: set only."""
-
 from __future__ import annotations
 
 import argparse
@@ -27,9 +26,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
 async def _handle_set(args: argparse.Namespace) -> int:
     # WR-01: env var for scripted use; secure prompt otherwise — never a CLI arg.
-    plaintext = os.environ.get("SMARTCOPILOT_PROVIDER_KEY") or getpass.getpass(
-        "Provider key: "
-    )
+    plaintext = os.environ.get("SMARTCOPILOT_PROVIDER_KEY") or getpass.getpass("Provider key: ")
     # Resolve target user
     user = None
     async for session in session_with_rls(system_operation_context()):
@@ -48,9 +45,7 @@ async def _handle_set(args: argparse.Namespace) -> int:
     )
     row = None
     async for session in session_with_rls(ctx):
-        row = await set_provider_key(
-            session, ctx, provider=args.provider, plaintext=plaintext
-        )
+        row = await set_provider_key(session, ctx, provider=args.provider, plaintext=plaintext)
         await session.commit()
     print(f"set provider_key id={row.id} provider={row.provider} hint={row.key_hint}")
     return 0

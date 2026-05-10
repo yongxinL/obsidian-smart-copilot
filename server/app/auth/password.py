@@ -11,7 +11,6 @@ Landmine #3: PasswordHasher.verify raises VerifyMismatchError on mismatch
 (does NOT return False). The wrapper catches all three exception subclasses
 and returns False so callers can write `if await verify_password(...): ...`.
 """
-
 from __future__ import annotations
 
 import asyncio

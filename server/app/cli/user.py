@@ -1,5 +1,4 @@
 """smartcopilot user — Phase 1b: create only."""
-
 from __future__ import annotations
 
 import argparse
@@ -25,9 +24,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
 async def _handle_create(args: argparse.Namespace) -> int:
     # WR-01: env var for scripted use; secure prompt otherwise — never a CLI arg.
-    password = os.environ.get("SMARTCOPILOT_NEW_PASSWORD") or getpass.getpass(
-        "Password: "
-    )
+    password = os.environ.get("SMARTCOPILOT_NEW_PASSWORD") or getpass.getpass("Password: ")
     ctx = system_operation_context(client_name="cli", request_id="cli-user-create")
     user = None
     async for session in session_with_rls(ctx):

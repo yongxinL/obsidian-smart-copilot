@@ -1,5 +1,4 @@
 """AUTH-04 unit tests — MCP bearer token entropy + hashing."""
-
 from __future__ import annotations
 
 import hashlib

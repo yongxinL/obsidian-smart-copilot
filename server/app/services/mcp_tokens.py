@@ -4,7 +4,6 @@ AUTH-04: plaintext shown once at create; storage column = SHA-256 hex.
 AUTH-05: last_used_at updated on every successful verify (DB UPDATE per request — homelab scale fine).
 AUTH-04 success criterion #2: revocation effective in <5s — DB-only path (no in-memory cache).
 """
-
 from __future__ import annotations
 
 import uuid
@@ -41,13 +40,9 @@ async def create_mcp_token(
     return plaintext, row
 
 
-async def list_for_user(
-    session: AsyncSession, user_id: uuid.UUID
-) -> Sequence[McpToken]:
+async def list_for_user(session: AsyncSession, user_id: uuid.UUID) -> Sequence[McpToken]:
     result = await session.execute(
-        select(McpToken).where(
-            McpToken.user_id == user_id, McpToken.revoked_at.is_(None)
-        )
+        select(McpToken).where(McpToken.user_id == user_id, McpToken.revoked_at.is_(None))
     )
     return result.scalars().all()
 

@@ -10,7 +10,6 @@ Maps to ROADMAP Phase 1b 5 success criteria:
 
 This test is the "phase ships" gate. It fails if any step regresses.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -31,9 +30,7 @@ pytestmark = [pytest.mark.auth, pytest.mark.integration]
 
 async def _delete_user(username: str) -> None:
     async for session in session_with_rls(system_operation_context()):
-        await session.execute(
-            text("DELETE FROM users WHERE username = :u"), {"u": username}
-        )
+        await session.execute(text("DELETE FROM users WHERE username = :u"), {"u": username})
         await session.commit()
 
 
@@ -73,12 +70,8 @@ async def test_phase_1b_acceptance() -> None:
         assert rc == 0
 
         # 1b. /auth/login → token pair
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as c:
-            login = await c.post(
-                "/auth/login", json={"username": username, "password": password}
-            )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            login = await c.post("/auth/login", json={"username": username, "password": password})
             assert login.status_code == 200, login.text
             tokens = login.json()
             assert "access_jwt" in tokens and "refresh_token" in tokens

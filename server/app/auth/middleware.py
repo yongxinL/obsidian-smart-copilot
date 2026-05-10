@@ -10,7 +10,6 @@ D-29 rule:
   THEN client_ip = left-most XFF entry
   ELSE client_ip = socket peer IP
 """
-
 from __future__ import annotations
 
 from collections.abc import Sequence

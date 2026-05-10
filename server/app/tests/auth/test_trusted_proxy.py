@@ -1,8 +1,9 @@
 """Trusted-proxy XFF integration — AUTH-08 (Plan 07)."""
-
 from __future__ import annotations
 
 import pytest
+from app.routes.admin import router as admin_router
+from app.routes.auth import router as auth_router
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -10,8 +11,6 @@ from sqlalchemy import text
 from app.auth.context import system_operation_context
 from app.auth.middleware import TrustedProxyMiddleware
 from app.dependencies import session_with_rls
-from app.routes.admin import router as admin_router
-from app.routes.auth import router as auth_router
 
 pytestmark = [pytest.mark.auth, pytest.mark.integration]
 
@@ -41,21 +40,15 @@ async def _create_user(username: str, password: str, role: str = "user"):  # typ
 
     ctx = system_operation_context()
     async for session in session_with_rls(ctx):
-        user = await create_user(
-            session, ctx, username=username, password_plain=password, role=role
-        )
+        user = await create_user(session, ctx, username=username, password_plain=password, role=role)
         await session.commit()
         return user.id
 
 
 async def _delete_user(user_id) -> None:  # type: ignore[type-arg]
     async for session in session_with_rls(system_operation_context()):
-        await session.execute(
-            text("DELETE FROM users WHERE id = :id"), {"id": str(user_id)}
-        )
-        await session.execute(
-            text("DELETE FROM login_attempts WHERE username LIKE 'xff%'")
-        )
+        await session.execute(text("DELETE FROM users WHERE id = :id"), {"id": str(user_id)})
+        await session.execute(text("DELETE FROM login_attempts WHERE username LIKE 'xff%'"))
         await session.commit()
 
 
@@ -66,9 +59,7 @@ async def test_xff_used_when_peer_trusted() -> None:
         # 127.0.0.1 is in 127.0.0.0/8 so XFF should be trusted
         test_app = _build_app(trust=True, cidrs=["127.0.0.0/8"])
         xff_ip = "1.2.3.4"
-        async with AsyncClient(
-            transport=ASGITransport(app=test_app), base_url="http://test"
-        ) as c:
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as c:
             for _ in range(10):
                 await c.post(
                     "/auth/login",
@@ -77,20 +68,14 @@ async def test_xff_used_when_peer_trusted() -> None:
                 )
         # Check that login_attempts rows have ip='1.2.3.4'
         async for session in session_with_rls(system_operation_context()):
-            row = (
-                await session.execute(
-                    text(
-                        "SELECT count(*) FROM login_attempts WHERE username='xffuser1' AND ip = :ip"
-                    ),
-                    {"ip": xff_ip},
-                )
-            ).scalar_one()
+            row = (await session.execute(
+                text("SELECT count(*) FROM login_attempts WHERE username='xffuser1' AND ip = :ip"),
+                {"ip": xff_ip},
+            )).scalar_one()
             assert row > 0, f"Expected login_attempts rows with ip={xff_ip}"
     finally:
         async for s in session_with_rls(system_operation_context()):
-            await s.execute(
-                text("DELETE FROM login_attempts WHERE username='xffuser1'")
-            )
+            await s.execute(text("DELETE FROM login_attempts WHERE username='xffuser1'"))
             await s.commit()
         await _delete_user(uid)
 
@@ -101,9 +86,7 @@ async def test_xff_ignored_when_untrusted_peer() -> None:
     try:
         # 10.0.0.0/8 does NOT include 127.0.0.1 (the test client peer)
         test_app = _build_app(trust=True, cidrs=["10.0.0.0/8"])
-        async with AsyncClient(
-            transport=ASGITransport(app=test_app), base_url="http://test"
-        ) as c:
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as c:
             await c.post(
                 "/auth/login",
                 json={"username": "xffuser2", "password": "WRONG"},
@@ -111,22 +94,14 @@ async def test_xff_ignored_when_untrusted_peer() -> None:
             )
         # Row should have ip=127.0.0.1 (peer wins, XFF ignored)
         async for session in session_with_rls(system_operation_context()):
-            row = (
-                await session.execute(
-                    text(
-                        "SELECT ip FROM login_attempts WHERE username='xffuser2' LIMIT 1"
-                    ),
-                )
-            ).first()
+            row = (await session.execute(
+                text("SELECT ip FROM login_attempts WHERE username='xffuser2' LIMIT 1"),
+            )).first()
             assert row is not None
-            assert str(row[0]) == "127.0.0.1", (
-                f"Expected peer IP 127.0.0.1, got {row[0]}"
-            )
+            assert str(row[0]) == "127.0.0.1", f"Expected peer IP 127.0.0.1, got {row[0]}"
     finally:
         async for s in session_with_rls(system_operation_context()):
-            await s.execute(
-                text("DELETE FROM login_attempts WHERE username='xffuser2'")
-            )
+            await s.execute(text("DELETE FROM login_attempts WHERE username='xffuser2'"))
             await s.commit()
         await _delete_user(uid)
 
@@ -138,9 +113,7 @@ async def test_rate_limit_keys_on_xff_when_trusted() -> None:
         test_app = _build_app(trust=True, cidrs=["127.0.0.0/8"])
         xff_ip = "1.2.3.4"
         other_xff = "5.6.7.8"
-        async with AsyncClient(
-            transport=ASGITransport(app=test_app), base_url="http://test"
-        ) as c:
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as c:
             # 10 failures with xff=1.2.3.4
             for _ in range(10):
                 await c.post(
@@ -154,22 +127,16 @@ async def test_rate_limit_keys_on_xff_when_trusted() -> None:
                 json={"username": "xffuser3", "password": "WRONG"},
                 headers={"X-Forwarded-For": xff_ip},
             )
-            assert r_limited.status_code == 429, (
-                f"Expected 429, got {r_limited.status_code}: {r_limited.text}"
-            )
+            assert r_limited.status_code == 429, f"Expected 429, got {r_limited.status_code}: {r_limited.text}"
             # Same user but different XFF — should NOT be rate-limited (different (ip,username) key)
             r_ok = await c.post(
                 "/auth/login",
                 json={"username": "xffuser3", "password": "WRONG"},
                 headers={"X-Forwarded-For": other_xff},
             )
-            assert r_ok.status_code == 401, (
-                f"Different XFF should not be rate-limited, got {r_ok.status_code}"
-            )
+            assert r_ok.status_code == 401, f"Different XFF should not be rate-limited, got {r_ok.status_code}"
     finally:
         async for s in session_with_rls(system_operation_context()):
-            await s.execute(
-                text("DELETE FROM login_attempts WHERE username='xffuser3'")
-            )
+            await s.execute(text("DELETE FROM login_attempts WHERE username='xffuser3'"))
             await s.commit()
         await _delete_user(uid)

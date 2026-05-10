@@ -1,5 +1,4 @@
 """audit_log emission for admin + auth events — AUTH-06 (Plan 05/07)."""
-
 from __future__ import annotations
 
 import pytest
@@ -22,25 +21,19 @@ async def _create_user(username: str, password: str, role: str = "user"):  # typ
 
     ctx = system_operation_context()
     async for session in session_with_rls(ctx):
-        user = await create_user(
-            session, ctx, username=username, password_plain=password, role=role
-        )
+        user = await create_user(session, ctx, username=username, password_plain=password, role=role)
         await session.commit()
         return user.id
 
 
 async def _delete_user(user_id) -> None:  # type: ignore[type-arg]
     async for session in session_with_rls(system_operation_context()):
-        await session.execute(
-            text("DELETE FROM users WHERE id = :id"), {"id": str(user_id)}
-        )
+        await session.execute(text("DELETE FROM users WHERE id = :id"), {"id": str(user_id)})
         await session.commit()
 
 
 async def _login(client: AsyncClient, username: str, password: str) -> str:
-    r = await client.post(
-        "/auth/login", json={"username": username, "password": password}
-    )
+    r = await client.post("/auth/login", json={"username": username, "password": password})
     assert r.status_code == 200, f"login failed: {r.text}"
     return r.json()["access_jwt"]
 
@@ -57,14 +50,10 @@ async def test_admin_op_writes_audit_log() -> None:
             )
             assert r.status_code == 200, r.text
         async for session in session_with_rls(system_operation_context()):
-            row = (
-                await session.execute(
-                    text(
-                        "SELECT action FROM audit_log WHERE user_id = :uid AND action = 'admin_reauth'"
-                    ),
-                    {"uid": str(uid)},
-                )
-            ).first()
+            row = (await session.execute(
+                text("SELECT action FROM audit_log WHERE user_id = :uid AND action = 'admin_reauth'"),
+                {"uid": str(uid)},
+            )).first()
             assert row is not None, "audit_log row with action='admin_reauth' expected"
     finally:
         await _delete_user(uid)
@@ -82,14 +71,10 @@ async def test_admin_reauth_success_writes_audit_log() -> None:
             )
             assert r.status_code == 200, r.text
         async for session in session_with_rls(system_operation_context()):
-            cnt = (
-                await session.execute(
-                    text(
-                        "SELECT count(*) FROM audit_log WHERE user_id = :uid AND action = 'admin_reauth'"
-                    ),
-                    {"uid": str(uid)},
-                )
-            ).scalar_one()
+            cnt = (await session.execute(
+                text("SELECT count(*) FROM audit_log WHERE user_id = :uid AND action = 'admin_reauth'"),
+                {"uid": str(uid)},
+            )).scalar_one()
             assert cnt >= 1, "admin_reauth audit row expected"
     finally:
         await _delete_user(uid)
@@ -107,17 +92,11 @@ async def test_admin_reauth_failure_writes_audit_log_with_reason() -> None:
             )
             assert r.status_code == 401
         async for session in session_with_rls(system_operation_context()):
-            row = (
-                await session.execute(
-                    text(
-                        "SELECT action FROM audit_log WHERE user_id = :uid AND action = 'admin_reauth_failed'"
-                    ),
-                    {"uid": str(uid)},
-                )
-            ).first()
-            assert row is not None, (
-                "audit_log row with action='admin_reauth_failed' expected"
-            )
+            row = (await session.execute(
+                text("SELECT action FROM audit_log WHERE user_id = :uid AND action = 'admin_reauth_failed'"),
+                {"uid": str(uid)},
+            )).first()
+            assert row is not None, "audit_log row with action='admin_reauth_failed' expected"
     finally:
         await _delete_user(uid)
 
@@ -126,24 +105,16 @@ async def test_refresh_rotation_audit_logged() -> None:
     uid = await _create_user("auditrefresh", "p@ssw0rd")
     try:
         async with await _new_client() as c:
-            r = await c.post(
-                "/auth/login", json={"username": "auditrefresh", "password": "p@ssw0rd"}
-            )
+            r = await c.post("/auth/login", json={"username": "auditrefresh", "password": "p@ssw0rd"})
             assert r.status_code == 200, r.text
             old_refresh = r.json()["refresh_token"]
             r2 = await c.post("/auth/refresh", json={"refresh_token": old_refresh})
             assert r2.status_code == 200, r2.text
         # rotate_refresh runs under system_operation_context so audit_log user_id is SYSTEM_USER_ID
         async for session in session_with_rls(system_operation_context()):
-            row = (
-                await session.execute(
-                    text(
-                        "SELECT action FROM audit_log WHERE action = 'refresh_rotated' ORDER BY created_at DESC LIMIT 1"
-                    ),
-                )
-            ).first()
-            assert row is not None, (
-                "audit_log row with action='refresh_rotated' expected"
-            )
+            row = (await session.execute(
+                text("SELECT action FROM audit_log WHERE action = 'refresh_rotated' ORDER BY created_at DESC LIMIT 1"),
+            )).first()
+            assert row is not None, "audit_log row with action='refresh_rotated' expected"
     finally:
         await _delete_user(uid)

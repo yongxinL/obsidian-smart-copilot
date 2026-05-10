@@ -9,7 +9,6 @@ On failure, raise HTTPException with the canonical error envelope (D-16).
 require_fresh_auth consumes ctx.session_id (populated by get_operation_context
 via the `sid` JWT claim — see Plan 04 task 04-03 emission and Plan 05 task 05-01/05-03 parsing).
 """
-
 from __future__ import annotations
 
 from datetime import UTC, datetime

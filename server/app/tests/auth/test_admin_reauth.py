@@ -1,5 +1,4 @@
 """Step-up admin re-auth + role enforcement — AUTH-06/07 (Plan 07)."""
-
 from __future__ import annotations
 
 import pytest
@@ -22,26 +21,20 @@ async def _create_user(username: str, password: str, role: str = "user"):  # typ
 
     ctx = system_operation_context()
     async for session in session_with_rls(ctx):
-        user = await create_user(
-            session, ctx, username=username, password_plain=password, role=role
-        )
+        user = await create_user(session, ctx, username=username, password_plain=password, role=role)
         await session.commit()
         return user.id
 
 
 async def _delete_user(user_id) -> None:  # type: ignore[type-arg]
     async for session in session_with_rls(system_operation_context()):
-        await session.execute(
-            text("DELETE FROM users WHERE id = :id"), {"id": str(user_id)}
-        )
+        await session.execute(text("DELETE FROM users WHERE id = :id"), {"id": str(user_id)})
         await session.commit()
 
 
 async def _login(client: AsyncClient, username: str, password: str) -> str:
     """Login and return access_jwt."""
-    r = await client.post(
-        "/auth/login", json={"username": username, "password": password}
-    )
+    r = await client.post("/auth/login", json={"username": username, "password": password})
     assert r.status_code == 200, f"login failed: {r.text}"
     return r.json()["access_jwt"]
 
@@ -49,9 +42,7 @@ async def _login(client: AsyncClient, username: str, password: str) -> str:
 async def test_role_enum_is_admin_or_user() -> None:
     async for session in session_with_rls(system_operation_context()):
         rows = await session.execute(
-            text(
-                "SELECT enumlabel FROM pg_enum WHERE enumtypid = 'user_role_enum'::regtype ORDER BY enumlabel"
-            )
+            text("SELECT enumlabel FROM pg_enum WHERE enumtypid = 'user_role_enum'::regtype ORDER BY enumlabel")
         )
         labels = {row[0] for row in rows}
         assert labels == {"admin", "user"}
@@ -86,14 +77,10 @@ async def test_reauth_sets_admin_fresh_until() -> None:
         assert r.status_code == 200, r.text
         # Verify admin_fresh_until is set in DB
         async for session in session_with_rls(system_operation_context()):
-            row = (
-                await session.execute(
-                    text(
-                        "SELECT admin_fresh_until FROM sessions WHERE user_id = :uid AND admin_fresh_until IS NOT NULL"
-                    ),
-                    {"uid": str(uid)},
-                )
-            ).first()
+            row = (await session.execute(
+                text("SELECT admin_fresh_until FROM sessions WHERE user_id = :uid AND admin_fresh_until IS NOT NULL"),
+                {"uid": str(uid)},
+            )).first()
             assert row is not None, "admin_fresh_until should be set after reauth"
     finally:
         await _delete_user(uid)

@@ -10,7 +10,6 @@ so 0002's RLS POLICY system-bypass OR clause admits the read — refresh and
 bearer validation run BEFORE the caller's identity is known and so cannot
 use a per-user GUC.
 """
-
 from __future__ import annotations
 
 import uuid

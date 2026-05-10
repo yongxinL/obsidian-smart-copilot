@@ -1,5 +1,4 @@
 """AUTH-01 unit tests — argon2 password hashing."""
-
 from __future__ import annotations
 
 import pytest

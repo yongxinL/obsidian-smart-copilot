@@ -18,7 +18,6 @@ it from dependencies.py is intentional even though dependencies.py imports
 fastapi — `session_with_rls` itself does NOT depend on FastAPI types and
 auth/core.py imports only that symbol.
 """
-
 from __future__ import annotations
 
 import uuid
@@ -49,27 +48,17 @@ async def get_operation_context(request: Request) -> OperationContext:
     # we cannot top-level import to avoid a circular import.
     from app.auth.core import validate_jwt
 
-    auth_header = request.headers.get("authorization") or request.headers.get(
-        "Authorization"
-    )
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
     token: str | None = None
     if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header[len("Bearer ") :].strip()
+        token = auth_header[len("Bearer "):].strip()
     result = validate_jwt(token)
     if result.error is not None or result.user_id is None:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "error": {
-                    "code": "unauthorized",
-                    "message": "valid bearer token required",
-                }
-            },
-        )
+        raise HTTPException(status_code=401, detail={
+            "error": {"code": "unauthorized", "message": "valid bearer token required"}
+        })
     request_id = request.headers.get("x-request-id") or "unset"
-    client_ip = getattr(request.state, "client_ip", None) or (
-        request.client.host if request.client else ""
-    )
+    client_ip = getattr(request.state, "client_ip", None) or (request.client.host if request.client else "")
     # session_id is populated by validate_jwt from the optional sid claim
     session_id: uuid.UUID | None = result.session_id
     return OperationContext(

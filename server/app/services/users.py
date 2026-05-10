@@ -3,7 +3,6 @@
 D-10: usernames are case-folded + stripped at the application layer before
 write/query. users.username (citext-style) is the canonical form.
 """
-
 from __future__ import annotations
 
 import uuid
@@ -16,10 +15,12 @@ from app.auth.password import hash_password
 from app.models.user import User
 
 
-class UsernameExists(Exception): ...
+class UsernameExists(Exception):
+    ...
 
 
-class InvalidRole(Exception): ...
+class InvalidRole(Exception):
+    ...
 
 
 SYSTEM_USERNAME = "system"
@@ -32,9 +33,7 @@ def normalize_username(raw: str) -> str:
 
 async def get_user_by_username(session: AsyncSession, raw_username: str) -> User | None:
     username = normalize_username(raw_username)
-    return (
-        await session.execute(select(User).where(User.username == username))
-    ).scalar_one_or_none()
+    return (await session.execute(select(User).where(User.username == username))).scalar_one_or_none()
 
 
 async def get_user_by_id(session: AsyncSession, user_id: uuid.UUID) -> User | None:

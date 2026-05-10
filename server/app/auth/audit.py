@@ -5,7 +5,6 @@ the current_setting('app.current_user_id') GUC (Phase 6 will gate reads).
 Used by routes/auth.py (refresh rotation events), routes/admin.py
 (admin_reauth success/failure), and any future admin mutation.
 """
-
 from __future__ import annotations
 
 from typing import Any

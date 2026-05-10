@@ -8,7 +8,6 @@ Subcommands:
 Each subcommand builds an OperationContext(transport='cli', remote=False, ...)
 and calls services/* via session_with_rls. The full Phase 1d CLI extends this.
 """
-
 from __future__ import annotations
 
 import argparse

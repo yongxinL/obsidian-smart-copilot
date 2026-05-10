@@ -8,7 +8,6 @@ Landmine #4: decrypt_provider_key MUST NOT pass ttl= — Fernet's TTL is
 at-rest keys. Default ttl=None disables expiry. CI grep gate in Plan 08
 rejects any decrypt(...,ttl=...) call.
 """
-
 from __future__ import annotations
 
 from cryptography.fernet import Fernet, MultiFernet
@@ -32,7 +31,9 @@ def _build_multifernet() -> MultiFernet:
     """
     key = settings.smartcopilot_fernet_key
     if not key:
-        raise FernetKeyMissing("SMARTCOPILOT_FERNET_KEY env var is required to start")
+        raise FernetKeyMissing(
+            "SMARTCOPILOT_FERNET_KEY env var is required to start"
+        )
     primary = Fernet(key.encode() if isinstance(key, str) else key)
     return MultiFernet([primary])
 
