@@ -76,7 +76,7 @@ findings:
   warning: 2
   info: 0
   total: 3
-status: issues_found
+status: fixed
 ---
 
 # Phase 01a: Code Review Report
