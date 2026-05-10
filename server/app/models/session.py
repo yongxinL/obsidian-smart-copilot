@@ -32,3 +32,8 @@ class Session(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # D-11 / D-12: step-up fresh auth window. NOT stored in JWT (cannot be
+    # revoked before JWT expiry; survives logout). NULL = no freshness granted.
+    admin_fresh_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
