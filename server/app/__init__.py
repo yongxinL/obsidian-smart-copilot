@@ -1,0 +1,1 @@
+"""Smart Copilot server package."""
