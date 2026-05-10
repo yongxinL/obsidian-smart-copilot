@@ -1,0 +1,9 @@
+# Smart Copilot — pre-commit hooks (Phase 1a)
+# Ruff lint + format. OpenAPI regeneration deferred to Phase 1c.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format

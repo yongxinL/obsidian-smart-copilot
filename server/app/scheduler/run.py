@@ -1,39 +1,57 @@
 """APScheduler process entry point.
 
-Phase 1a: STUB — starts, logs a banner, blocks until SIGTERM. Real APScheduler
-3.x SQLAlchemyJobStore wiring lands in Phase 4. Supervisord program priority
-40 invokes this as: python -m app.scheduler.run
+Phase 1b: registers the hourly prune_login_attempts job (D-09).
+Phase 4 will swap the default in-memory store for SQLAlchemyJobStore for
+cross-restart durability. Supervisord program priority 40 invokes this as:
+    python -m app.scheduler.run
 """
 
 from __future__ import annotations
 
-import logging
+import asyncio
 import signal
 import sys
-import time
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [scheduler.run] %(message)s"
-)
-log = logging.getLogger("smart_copilot.scheduler")
+import structlog
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-_running = True
+from app.logging.redaction import configure_logging
+from app.scheduler.jobs.prune_login_attempts import prune_login_attempts
 
 
-def _handle_signal(signum: int, frame) -> None:  # noqa: ARG001
-    global _running
-    log.info("received signal %s; shutting down", signum)
-    _running = False
+async def _amain() -> int:
+    # WR-03: activate structlog + D-27 redaction processor before any log emission.
+    # Must be called before get_logger so cache_logger_on_first_use captures the
+    # configured processors (not stdlib fallback defaults).
+    configure_logging()
+    log = structlog.get_logger("smart_copilot.scheduler")
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        prune_login_attempts,
+        "interval",
+        hours=1,
+        id="prune_login_attempts",
+        replace_existing=True,
+        coalesce=True,
+    )
+    scheduler.start()
+    log.info("scheduler started", jobs=["prune_login_attempts (hourly)"])
+    stop_event = asyncio.Event()
+
+    def _stop(signum, _frame):  # noqa: ARG001
+        log.info("scheduler shutting down", signal=signum)
+        stop_event.set()
+
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+    await stop_event.wait()
+    scheduler.shutdown(wait=False)
+    log.info("scheduler shutdown complete")
+    return 0
 
 
 def main() -> int:
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
-    log.info("STUB starting; real APScheduler 3.x impl in Phase 4")
-    while _running:
-        time.sleep(1)
-    log.info("STUB exiting cleanly")
-    return 0
+    return asyncio.run(_amain())
 
 
 if __name__ == "__main__":

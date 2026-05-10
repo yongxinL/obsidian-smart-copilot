@@ -1,52 +1,30 @@
-"""MCP HTTP server entry point.
+"""MCP HTTP / stdio entry point.
 
-Phase 1a: STUB — starts, logs a banner, blocks until SIGTERM. Real MCP
-Streamable HTTP implementation lands in Phase 1d (REQ MCP-01..MCP-08).
-Supervisord program priority 30 invokes this as: python -m app.mcp.server --http
+Phase 1b: minimal stub. Imports `validate_bearer` from app.auth.core to prove
+the D-21 "MCP HTTP shares auth_core by import" seam is in place. Phase 1d wires
+the actual MCP SDK + AuthSettings + Streamable HTTP server.
+
+Supervisord priority 30 invokes:
+    python -m app.mcp.server --http
+Until Phase 1d ships, that exits non-zero with NotImplementedError — which
+is the desired behavior (the MCP HTTP process is not part of the Phase 1b
+success criteria; it must just not break the container BUILD/IMPORT).
 """
 
 from __future__ import annotations
 
-import argparse
-import logging
-import signal
-import sys
-import time
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [mcp.server] %(message)s")
-log = logging.getLogger("smart_copilot.mcp")
-
-_running = True
+from app.auth.core import validate_bearer  # noqa: F401 — D-21 seam
 
 
-def _handle_signal(signum: int, frame) -> None:  # noqa: ARG001
-    global _running
-    log.info("received signal %s; shutting down", signum)
-    _running = False
+def main_http() -> int:
+    raise NotImplementedError("Phase 1d wires MCP SDK")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Smart Copilot MCP server (Phase 1a stub)"
-    )
-    parser.add_argument("--http", action="store_true", help="HTTP mode (Phase 1d)")
-    parser.add_argument("--stdio", action="store_true", help="stdio mode (Phase 1d)")
-    parser.add_argument("--port", type=int, default=8787)
-    args = parser.parse_args()
-
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
-
-    log.info(
-        "STUB starting (mode=%s, port=%d); real impl in Phase 1d",
-        "http" if args.http else "stdio",
-        args.port,
-    )
-    while _running:
-        time.sleep(1)
-    log.info("STUB exiting cleanly")
-    return 0
+def main_stdio() -> int:
+    raise NotImplementedError("Phase 1d wires MCP SDK")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import sys
+
+    sys.exit(main_http())
