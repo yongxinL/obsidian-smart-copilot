@@ -1,1 +1,1 @@
-"""Vault filesystem observer package (full implementation in Phase 1c)."""
+"""Vault filesystem utilities — parser, path safety, and watchdog."""
