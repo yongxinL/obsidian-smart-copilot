@@ -49,6 +49,17 @@ class Settings(BaseSettings):
     smartcopilot_trust_proxy: bool = Field(default=False)
     smartcopilot_trusted_proxy_cidrs: list[str] = Field(default_factory=list)
 
+    # --- Phase 1c: Vault + Watchdog Indexer ---
+    # Per-path debounce for filesystem watchdog (D-07, DEC-003 from CLAUDE.md)
+    # Env var: VAULT_WATCH_DEBOUNCE_MS (pydantic-settings maps snake_case to env without prefix)
+    # D-07 specifies SMARTCOPILOT_VAULT_WATCH_DEBOUNCE_MS — use validation_alias to match:
+    vault_watch_debounce_ms: int = Field(
+        default=750,
+        validation_alias="VAULT_WATCH_DEBOUNCE_MS",
+    )
+    # Shared vault write policy (VAULT-03) — "admin_only" | "all_users"
+    shared_vault_write_policy: str = Field(default="admin_only")
+
     @field_validator("smartcopilot_fernet_key")
     @classmethod
     def validate_fernet_key(cls, v: str) -> str:

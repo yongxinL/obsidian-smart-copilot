@@ -1,6 +1,7 @@
-"""Page version model (REQ-306).
+"""Page version model (REQ-306, VAULT-08).
 
 Per D-07, one file per domain.
+Phase 1c: VAULT-08 adds timeline column for compiled-truth/timeline snapshot.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ class PageVersion(Base):
         JSONB, nullable=False, server_default="{}"
     )
     compiled_truth: Mapped[str] = mapped_column(Text, server_default="")
+    timeline: Mapped[str | None] = mapped_column(Text, nullable=True, server_default="")
     content_hash: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
