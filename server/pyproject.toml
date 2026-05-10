@@ -1,0 +1,42 @@
+[project]
+name = "smart-copilot-server"
+version = "0.0.0"
+description = "Smart Copilot self-hosted AI knowledge brain -- server"
+requires-python = ">=3.12,<3.13"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/versions/*.py" = ["E402"]
+"app/tests/**/*.py" = ["S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+# pytest-asyncio 1.x: event_loop fixture override is REMOVED (Pitfall 2 / D-04).
+# Use config-driven loop scoping instead.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "function"
+testpaths = ["app/tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: integration tests requiring testcontainers (PostgreSQL via Docker)",
+]
