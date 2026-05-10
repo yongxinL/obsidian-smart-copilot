@@ -3,7 +3,8 @@
 # CLAUDE.md: base MUST be pgvector/pgvector:pg16; supervisord PID 1; volumes /data /vaults /config.
 
 # Stage 1 — provide a Python 3.12 install we can copy into the runtime image.
-FROM python:3.12-slim AS pybase
+# Use bookworm (Debian 12) to match the pgvector:pg16 base image glibc version.
+FROM python:3.12-bookworm AS pybase
 
 # Stage 2 — runtime image: pgvector + postgres + supervisord + python3.12.
 FROM pgvector/pgvector:pg16
@@ -15,8 +16,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PATH="/opt/python3.12/bin:${PATH}"
 
-# Copy the entire Python 3.12 install from the slim image into /opt/python3.12.
-# python:3.12-slim installs Python under /usr/local; copy it as a self-contained tree.
+# Copy the entire Python 3.12 install from the bookworm image into /opt/python3.12.
+# python:3.12-bookworm ships Python 3.12 under /usr/local; copy as a self-contained tree.
 COPY --from=pybase /usr/local /opt/python3.12
 
 # System deps: supervisord, postgres client (for pg_isready in wait-for-pg.sh), build basics
@@ -30,9 +31,7 @@ RUN apt-get update \
         libpq5 \
  && ln -sf /opt/python3.12/bin/python3.12 /usr/local/bin/python3 \
  && ln -sf /opt/python3.12/bin/python3.12 /usr/local/bin/python \
- && ln -sf /opt/python3.12/bin/pip3.12 /usr/local/bin/pip3 \
- && ln -sf /opt/python3.12/bin/pip3.12 /usr/local/bin/pip \
- && python3 --version | grep '3.12' \
+ && /opt/python3.12/bin/python3.12 --version \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Application directory.
@@ -40,7 +39,9 @@ WORKDIR /app
 
 # Install Python deps first for layer caching.
 COPY requirements.txt /app/requirements.txt
-RUN pip3 install --no-cache-dir -r /app/requirements.txt
+# pip3 has shebang #!/usr/local/bin/python3.12 — symlink needed so pip can find Python.
+RUN ln -sf /opt/python3.12/bin/python3.12 /usr/local/bin/python3.12 \
+ && /opt/python3.12/bin/python3.12 -m pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy application sources.
 COPY app /app/app
