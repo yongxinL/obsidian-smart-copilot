@@ -14,7 +14,7 @@ Smart Copilot is built in strict horizontal layers — foundational infrastructu
 Decimal sub-phases execute in order within their parent integer phase.
 
 - [ ] **Phase 1a: Container + Data Layer** - Docker/supervisord, PostgreSQL 16 + pgvector, monorepo scaffold, core models and Alembic migrations (planned)
-- [ ] **Phase 1b: Auth + Security Primitives** - Argon2 password hashing, JWT sessions, MCP bearer tokens, Fernet-encrypted API keys, RLS enforcement
+- [x] **Phase 1b: Auth + Security Primitives** - Argon2 password hashing, JWT sessions, MCP bearer tokens, Fernet-encrypted API keys, RLS enforcement (completed 2026-05-10)
 - [ ] **Phase 1c: Vault + Watchdog Indexer** - Page CRUD with compiled-truth/timeline convention, frontmatter parsing, wikilink resolution, filesystem watchdog
 - [ ] **Phase 1d: MCP Server + REST API + CLI** - Stdio and HTTP MCP transports, REST/WebSocket API, smartcopilot CLI binary
 - [ ] **Phase 2a: LLM Gateway + Hybrid RAG Pipeline** - LiteLLM router, chunker/embedder, pgvector HNSW, BM25 tsvector, RRF fusion engine
@@ -55,14 +55,14 @@ Decimal sub-phases execute in order within their parent integer phase.
   4. Provider API key stored as Fernet-encrypted BYTEA; decrypted value never returned in any API response; container refuses to start if `SMARTCOPILOT_FERNET_KEY` env var is absent
   5. Step-up re-auth endpoint `POST /api/v1/admin/reauth` grants the admin fresh-auth window; destructive admin operations without fresh auth return `forbidden`
 **Plans**: 8 plans (6 waves)
-- [ ] 01B-01-test-foundation-PLAN.md — Wave 0 — requirements deltas + Settings extension + structlog redaction + 14 test stubs + auth conftest (TEST-02 stub authored)
-- [ ] 01B-02-migration-and-models-PLAN.md — Alembic 0002 (login_attempts table, sessions.admin_fresh_until, 22 RLS POLICY blocks, system user seed) + LoginAttempt model
-- [ ] 01B-03-encryption-PLAN.md — Fernet/MultiFernet seam + Landmine #4 source-level gate (AUTH-09)
-- [ ] 01B-04-auth-primitives-PLAN.md — auth/{context,password,tokens,mcp_tokens}.py + 12 unit tests (AUTH-01, AUTH-02, AUTH-04; Landmines #2, #3, #6 closed)
-- [ ] 01B-05-core-rls-deps-PLAN.md — auth/{core,audit}.py + dependencies.py SET 3 GUCs + database.py PoolEvents.reset listener + 5 RLS isolation tests (TEST-02 headline)
-- [ ] 01B-06-services-and-deps-PLAN.md — services/{users,sessions,mcp_tokens,provider_keys}.py + auth/deps.py + 8 integration tests
-- [ ] 01B-07-routes-and-middleware-PLAN.md — TrustedProxyMiddleware + routes/{auth,admin}.py + main.py startup-fail + APScheduler prune job + 23 integration tests
-- [ ] 01B-08-cli-and-acceptance-PLAN.md — smartcopilot CLI stub + repo-wide grep gates + Phase 1b acceptance test + populate VALIDATION.md
+- [x] 01B-01-test-foundation-PLAN.md — Wave 0 — requirements deltas + Settings extension + structlog redaction + 14 test stubs + auth conftest (TEST-02 stub authored)
+- [x] 01B-02-migration-and-models-PLAN.md — Alembic 0002 (login_attempts table, sessions.admin_fresh_until, 22 RLS POLICY blocks, system user seed) + LoginAttempt model
+- [x] 01B-03-encryption-PLAN.md — Fernet/MultiFernet seam + Landmine #4 source-level gate (AUTH-09)
+- [x] 01B-04-auth-primitives-PLAN.md — auth/{context,password,tokens,mcp_tokens}.py + 12 unit tests (AUTH-01, AUTH-02, AUTH-04; Landmines #2, #3, #6 closed)
+- [x] 01B-05-core-rls-deps-PLAN.md — auth/{core,audit}.py + dependencies.py SET 3 GUCs + database.py PoolEvents.reset listener + 5 RLS isolation tests (TEST-02 headline)
+- [x] 01B-06-services-and-deps-PLAN.md — services/{users,sessions,mcp_tokens,provider_keys}.py + auth/deps.py + 8 integration tests
+- [x] 01B-07-routes-and-middleware-PLAN.md — TrustedProxyMiddleware + routes/{auth,admin}.py + main.py startup-fail + APScheduler prune job + 23 integration tests
+- [x] 01B-08-cli-and-acceptance-PLAN.md — smartcopilot CLI stub + repo-wide grep gates + Phase 1b acceptance test + populate VALIDATION.md
 **UI hint**: no
 
 ### Phase 1c: Vault + Watchdog Indexer
@@ -215,7 +215,7 @@ Phases execute in order: 1a → 1b → 1c → 1d → 2a → 2b → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1a. Container + Data Layer | 4/4 | Complete | 2026-05-10 |
-| 1b. Auth + Security Primitives | 0/8 | Not started | - |
+| 1b. Auth + Security Primitives | 8/8 | Complete   | 2026-05-10 |
 | 1c. Vault + Watchdog Indexer | 0/8 | Not started | - |
 | 1d. MCP Server + REST API + CLI | 0/6 | Not started | - |
 | 2a. LLM Gateway + Hybrid RAG Pipeline | 0/TBD | Not started | - |
