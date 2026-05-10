@@ -19,8 +19,8 @@ from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True, loop_scope="session")
-async def _patch_session_factory(test_engine: AsyncEngine) -> AsyncIterator[None]:
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def patch_session_factory(test_engine: AsyncEngine) -> AsyncIterator[None]:
     """Redirect session_with_rls to use the test engine pool (not prod DB).
 
     Mirrors server/app/tests/auth/conftest.py _patch_session_factory exactly.
