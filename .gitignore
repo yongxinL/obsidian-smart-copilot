@@ -163,3 +163,21 @@ Icon[]
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Node / pnpm
+.pnpm-store/
+
+# Docker volumes for local dev
+data/
+vaults/
+config/

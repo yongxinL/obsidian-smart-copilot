@@ -1,0 +1,9 @@
+{
+  "name": "@smart-copilot/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Smart Copilot Electron desktop client (deferred to Phase 8)",
+  "scripts": {
+    "build": "echo 'desktop client deferred to Phase 8' && exit 0"
+  }
+}
