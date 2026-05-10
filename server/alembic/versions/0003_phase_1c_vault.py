@@ -70,7 +70,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # ── Step 1: Reverse enum replacement ──────────────────────────────────────
+    # ── Step 1: Swap out the current note_type column for the old enum values ───
+    # PostgreSQL cannot DROP TYPE that a column uses. Strategy: add new temp column
+    # with old type → migrate data → drop old column → rename temp column.
+    # Then rename types: new type → placeholder → old name.
     op.execute(
         "CREATE TYPE page_note_type_enum_old AS ENUM "
         "('compiled_truth', 'timeline', 'mixed')"
@@ -79,10 +82,23 @@ def downgrade() -> None:
         "ALTER TABLE pages ADD COLUMN note_type_old page_note_type_enum_old "
         "NOT NULL DEFAULT 'mixed'::page_note_type_enum_old"
     )
+    op.execute(
+        "UPDATE pages SET note_type_old = 'mixed'::page_note_type_enum_old "
+        "WHERE note_type IS NULL OR note_type = ''::page_note_type_enum"
+    )
+    # Map new values to their closest old equivalents
+    op.execute(
+        "UPDATE pages SET note_type_old = 'mixed'::page_note_type_enum_old "
+        "WHERE note_type IN ('fleeting', 'literature', 'permanent', "
+        "'archived_fleeting', 'skill', 'moc')"
+    )
     op.execute("ALTER TABLE pages DROP COLUMN note_type")
     op.execute("ALTER TABLE pages RENAME COLUMN note_type_old TO note_type")
-    op.execute("DROP TYPE page_note_type_enum")
+    # Clean up types: new type still exists (renamed from _new), rename it away
+    # so we can recreate with the old name
+    op.execute("ALTER TYPE page_note_type_enum RENAME TO page_note_type_enum_recycled")
     op.execute("ALTER TYPE page_note_type_enum_old RENAME TO page_note_type_enum")
+    op.execute("DROP TYPE page_note_type_enum_recycled")
 
     # ── Step 2: Drop columns added in upgrade ──────────────────────────────────
     op.drop_constraint("fk_pages_deleted_by_users", "pages", type_="foreignkey")
