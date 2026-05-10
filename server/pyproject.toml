@@ -40,5 +40,6 @@ testpaths = ["app/tests"]
 addopts = "-ra --strict-markers"
 markers = [
     "integration: integration tests requiring testcontainers (PostgreSQL via Docker)",
-    "auth: authentication and authorization tests (RLS isolation, JWT, MCP tokens)",
+    "unit: pure unit tests, no testcontainers required",
+    "auth: Phase 1b auth + RLS tests (covers AUTH-01..10, TEST-02)",
 ]
