@@ -16,7 +16,7 @@ Decimal sub-phases execute in order within their parent integer phase.
 - [ ] **Phase 1a: Container + Data Layer** - Docker/supervisord, PostgreSQL 16 + pgvector, monorepo scaffold, core models and Alembic migrations (planned)
 - [x] **Phase 1b: Auth + Security Primitives** - Argon2 password hashing, JWT sessions, MCP bearer tokens, Fernet-encrypted API keys, RLS enforcement (completed 2026-05-10)
 - [ ] **Phase 1c: Vault + Watchdog Indexer** - Page CRUD with compiled-truth/timeline convention, frontmatter parsing, wikilink resolution, filesystem watchdog
-- [ ] **Phase 1d: MCP Server + REST API + CLI** - Stdio and HTTP MCP transports, REST/WebSocket API, smartcopilot CLI binary
+- [x] **Phase 1d: MCP Server + REST API + CLI** - Stdio and HTTP MCP transports, REST/WebSocket API, smartcopilot CLI binary (completed 2026-05-11)
 - [ ] **Phase 2a: LLM Gateway + Hybrid RAG Pipeline** - LiteLLM router, chunker/embedder, pgvector HNSW, BM25 tsvector, RRF fusion engine
 - [ ] **Phase 2b: Knowledge Graph + Agent Runner** - Zero-LLM wikilink extraction, typed graph, recursive CTE traversal, 22-tool ReAct agent, golden query eval
 - [ ] **Phase 3: Skills + Ingestion + Entity Enrichment** - Skills runtime, RESOLVER.md, default skill pack, idea/media/meeting ingestion, tiered entity enrichment
@@ -99,20 +99,20 @@ Decimal sub-phases execute in order within their parent integer phase.
 **Plans**: 6 plans (5 waves)
 
 **Wave 1** — Foundation
-- [ ] 01d-01-PLAN.md — Migration 0004 (search_vector + GIN) + extended services/pages.py + services/capabilities.py (REST-05, REST-06)
+- [x] 01d-01-PLAN.md — Migration 0004 (search_vector + GIN) + extended services/pages.py + services/capabilities.py (REST-05, REST-06)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 01d-02-PLAN.md — MCP server (stdio + HTTP) + tools/ package + services/vault_resolver.py (14 real + 17 stubs) (MCP-01..08)
+- [x] 01d-02-PLAN.md — MCP server (stdio + HTTP) + tools/ package + services/vault_resolver.py (14 real + 17 stubs) (MCP-01..08)
 
 **Wave 3** *(blocked on Wave 2 completion — 01d-03 and 01d-05 run in parallel)*
-- [ ] 01d-03-PLAN.md — REST routes (pages, search, vault, capabilities) + REST↔MCP parity test + openapi.json (REST-01, REST-02, REST-04, REST-05, REST-06, CLI-04, CLI-05)
-- [ ] 01d-05-PLAN.md — CLI expansion (page CRUD, doctor, check-resolvable, mcp serve, reconcile, stats) (CLI-01, CLI-02, CLI-03)
+- [x] 01d-03-PLAN.md — REST routes (pages, search, vault, capabilities) + REST↔MCP parity test + openapi.json (REST-01, REST-02, REST-04, REST-05, REST-06, CLI-04, CLI-05)
+- [x] 01d-05-PLAN.md — CLI expansion (page CRUD, doctor, check-resolvable, mcp serve, reconcile, stats) (CLI-01, CLI-02, CLI-03)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 01d-04-PLAN.md — WebSocket /api/v1/ws + LISTEN/NOTIFY plumbing + watcher pg_notify migration (REST-03, REST-04)
+- [x] 01d-04-PLAN.md — WebSocket /api/v1/ws + LISTEN/NOTIFY plumbing + watcher pg_notify migration (REST-03, REST-04)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 01d-06-PLAN.md — Phase 1d acceptance test (TEST-04) + stdio cleanliness invariant (TEST-03) + VALIDATION.md (TEST-03, TEST-04, MCP-08)
+- [x] 01d-06-PLAN.md — Phase 1d acceptance test (TEST-04) + stdio cleanliness invariant (TEST-03) + VALIDATION.md (TEST-03, TEST-04, MCP-08)
 
 **Cross-cutting constraints:**
 - `session_with_rls(ctx)` required for all DB operations (present in Plans 01–05)
@@ -217,7 +217,7 @@ Phases execute in order: 1a → 1b → 1c → 1d → 2a → 2b → 3 → 4 → 5
 | 1a. Container + Data Layer | 4/4 | Complete | 2026-05-10 |
 | 1b. Auth + Security Primitives | 8/8 | Complete    | 2026-05-10 |
 | 1c. Vault + Watchdog Indexer | 0/8 | Not started | - |
-| 1d. MCP Server + REST API + CLI | 0/6 | Not started | - |
+| 1d. MCP Server + REST API + CLI | 6/6 | Complete    | 2026-05-11 |
 | 2a. LLM Gateway + Hybrid RAG Pipeline | 0/TBD | Not started | - |
 | 2b. Knowledge Graph + Agent Runner | 0/TBD | Not started | - |
 | 3. Skills + Ingestion + Entity Enrichment | 0/TBD | Not started | - |

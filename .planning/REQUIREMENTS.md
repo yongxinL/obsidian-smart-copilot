@@ -56,31 +56,31 @@
 
 ### MCP Server (MCP)
 
-- [ ] **MCP-01**: MCP server supports stdio mode (`smartcopilot mcp serve --stdio`); stdout used only for JSON-RPC framing; logs to stderr
-- [ ] **MCP-02**: MCP server supports Streamable HTTP mode on configurable port (default 8787), launched by supervisord as `mcp-http`
-- [ ] **MCP-03**: Both transports use the same tool implementations from the service layer (no duplication)
-- [ ] **MCP-04**: `OperationContext` constructed per request with: `user_id`, `transport`, `remote` flag, `client_name`, `request_id`
-- [ ] **MCP-05**: `remote=true` callers blocked from shell exec, cross-user vault reads, system skill modification, key rotation, user creation; slug/filename validated
-- [ ] **MCP-06**: MCP tool surface (≥ 30 tools): `brain.search`, `brain.query`, `brain.get`, `brain.put`, `brain.append_timeline`, `brain.update_compiled_truth`, `brain.list`, `brain.delete`, `brain.history`, `brain.diff`, `brain.revert`, `brain.tags.*`, `brain.backlinks`, `brain.graph.traverse`, `brain.entity.*`, `brain.stats`, `brain.health`, `capability_discovery`, `ingest.idea`, `ingest.media`, `ingest.meeting`, `enrich.entity`, `recipe.run`, `skill.list/get/run`, `jobs.submit/status/cancel`, `maintain.run/report`
-- [ ] **MCP-07**: Each MCP tool has JSON schema for inputs and outputs; testable via integration test with constructed `OperationContext`
-- [ ] **MCP-08**: Per-token usage metrics recorded; STDIO auth via `SMARTCOPILOT_MCP_TOKEN` env var; HTTP auth via `Authorization: Bearer`
+- [x] **MCP-01**: MCP server supports stdio mode (`smartcopilot mcp serve --stdio`); stdout used only for JSON-RPC framing; logs to stderr
+- [x] **MCP-02**: MCP server supports Streamable HTTP mode on configurable port (default 8787), launched by supervisord as `mcp-http`
+- [x] **MCP-03**: Both transports use the same tool implementations from the service layer (no duplication)
+- [x] **MCP-04**: `OperationContext` constructed per request with: `user_id`, `transport`, `remote` flag, `client_name`, `request_id`
+- [x] **MCP-05**: `remote=true` callers blocked from shell exec, cross-user vault reads, system skill modification, key rotation, user creation; slug/filename validated
+- [x] **MCP-06**: MCP tool surface (≥ 30 tools): `brain.search`, `brain.query`, `brain.get`, `brain.put`, `brain.append_timeline`, `brain.update_compiled_truth`, `brain.list`, `brain.delete`, `brain.history`, `brain.diff`, `brain.revert`, `brain.tags.*`, `brain.backlinks`, `brain.graph.traverse`, `brain.entity.*`, `brain.stats`, `brain.health`, `capability_discovery`, `ingest.idea`, `ingest.media`, `ingest.meeting`, `enrich.entity`, `recipe.run`, `skill.list/get/run`, `jobs.submit/status/cancel`, `maintain.run/report`
+- [x] **MCP-07**: Each MCP tool has JSON schema for inputs and outputs; testable via integration test with constructed `OperationContext`
+- [x] **MCP-08**: Per-token usage metrics recorded; STDIO auth via `SMARTCOPILOT_MCP_TOKEN` env var; HTTP auth via `Authorization: Bearer`
 
 ### REST + WebSocket API (REST)
 
-- [ ] **REST-01**: Every MCP tool has a 1:1 REST endpoint at `/api/v1/` backed by the same service function
-- [ ] **REST-02**: All REST responses are Pydantic models; encrypted keys never returned
-- [ ] **REST-03**: `/ws` WebSocket endpoint streams: indexing progress, job status, ingestion progress, maintenance reports, query tokens
-- [ ] **REST-04**: Error format: `{error: {code, message, details?}}` with stable codes: `unauthorized`, `forbidden`, `not_found`, `validation_error`, `conflict`, `rate_limited`, `service_unavailable`, `internal_error`
-- [ ] **REST-05**: Capability discovery: `GET /api/v1/capabilities` and `capability_discovery` MCP tool; returns transports, clipboard availability, ingestion limits
-- [ ] **REST-06**: Routes are thin (validate → service → response model); services are transport-agnostic (no FastAPI types in `services/`)
+- [x] **REST-01**: Every MCP tool has a 1:1 REST endpoint at `/api/v1/` backed by the same service function
+- [x] **REST-02**: All REST responses are Pydantic models; encrypted keys never returned
+- [x] **REST-03**: `/ws` WebSocket endpoint streams: indexing progress, job status, ingestion progress, maintenance reports, query tokens
+- [x] **REST-04**: Error format: `{error: {code, message, details?}}` with stable codes: `unauthorized`, `forbidden`, `not_found`, `validation_error`, `conflict`, `rate_limited`, `service_unavailable`, `internal_error`
+- [x] **REST-05**: Capability discovery: `GET /api/v1/capabilities` and `capability_discovery` MCP tool; returns transports, clipboard availability, ingestion limits
+- [x] **REST-06**: Routes are thin (validate → service → response model); services are transport-agnostic (no FastAPI types in `services/`)
 
 ### CLI Admin Tools + Admin REST (CLI)
 
-- [ ] **CLI-01**: `smartcopilot` binary inside container for: user CRUD, MCP token management, provider key management, vault operations, MCP serve, doctor, maintain run, ingest, search, query, get, put, extract, jobs, skills
-- [ ] **CLI-02**: `smartcopilot doctor` runs smoke tests; `smartcopilot smoke-test` runs drop-in scripts from `/etc/smartcopilot/smoke-tests.d/*.sh`
-- [ ] **CLI-03**: `smartcopilot check-resolvable` validates skills tree for reachability, MECE, DRY, gap detection, orphans
-- [ ] **CLI-04**: Admin REST endpoints parallel to CLI: user CRUD, shared API keys, embedding migration, dream status/triggers, MCP server registration
-- [ ] **CLI-05**: All admin REST endpoints enforce `role='admin'` AND fresh auth factor within last 60 minutes for destructive operations
+- [x] **CLI-01**: `smartcopilot` binary inside container for: user CRUD, MCP token management, provider key management, vault operations, MCP serve, doctor, maintain run, ingest, search, query, get, put, extract, jobs, skills
+- [x] **CLI-02**: `smartcopilot doctor` runs smoke tests; `smartcopilot smoke-test` runs drop-in scripts from `/etc/smartcopilot/smoke-tests.d/*.sh`
+- [x] **CLI-03**: `smartcopilot check-resolvable` validates skills tree for reachability, MECE, DRY, gap detection, orphans
+- [x] **CLI-04**: Admin REST endpoints parallel to CLI: user CRUD, shared API keys, embedding migration, dream status/triggers, MCP server registration
+- [x] **CLI-05**: All admin REST endpoints enforce `role='admin'` AND fresh auth factor within last 60 minutes for destructive operations
 
 ### Hybrid RAG Pipeline (RAG)
 
@@ -205,8 +205,8 @@
 
 - [ ] **TEST-01**: `pytest + pytest-asyncio` test suite executing against a real PostgreSQL test database (no mocks for DB)
 - [x] **TEST-02**: RLS isolation tests: assert that exiting a request scope leaves no session GUC leaked across pooled connections
-- [ ] **TEST-03**: MCP stdio cleanliness test: assert no unexpected stdout output in stdio mode
-- [ ] **TEST-04**: Phase acceptance tests per PRD Sections 6.1–6.7 (one per phase)
+- [x] **TEST-03**: MCP stdio cleanliness test: assert no unexpected stdout output in stdio mode
+- [x] **TEST-04**: Phase acceptance tests per PRD Sections 6.1–6.7 (one per phase)
 - [ ] **TEST-05**: Golden query eval suite for retrieval regression: Precision@K, Recall@K, MRR, nDCG@K, p95 latency
 
 ---
