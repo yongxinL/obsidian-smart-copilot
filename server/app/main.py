@@ -11,6 +11,7 @@ body["detail"]["error"]["code"]. We register a global exception handler that
 returns JSONResponse(content=exc.detail) so clients see body["error"]["code"]
 directly.
 """
+
 from __future__ import annotations
 
 import sys
@@ -25,6 +26,7 @@ from app.auth.middleware import TrustedProxyMiddleware
 from app.database import engine  # import triggers connect event registration
 from app.encryption import FernetKeyMissing, fernet
 from app.logging.redaction import configure_logging
+from app.notify.listener import IndexEventListener
 from app.routes.admin import router as admin_router
 from app.routes.auth import router as auth_router
 from app.routes.health import router as health_router
@@ -32,7 +34,8 @@ from app.routes.pages import router as pages_router
 from app.routes.search import router as search_router
 from app.routes.vault import router_capabilities as vault_capabilities_router
 from app.routes.vault import router_vault as vault_router
-from app.settings import settings
+from app.routes.ws import router as ws_router
+from app.settings import get_notify_dsn, settings
 
 
 def _fail_startup_if_missing_secrets() -> None:
@@ -43,7 +46,9 @@ def _fail_startup_if_missing_secrets() -> None:
         print(f"FATAL: {e}", file=sys.stderr)
         sys.exit(1)
     except ValueError as e:
-        print(f"FATAL: SMARTCOPILOT_FERNET_KEY is set but invalid: {e}", file=sys.stderr)
+        print(
+            f"FATAL: SMARTCOPILOT_FERNET_KEY is set but invalid: {e}", file=sys.stderr
+        )
         sys.exit(1)
     if not settings.jwt_signing_key:
         print(
@@ -57,8 +62,14 @@ def _fail_startup_if_missing_secrets() -> None:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     _fail_startup_if_missing_secrets()
-    yield
-    await engine.dispose()
+    listener = IndexEventListener(get_notify_dsn())
+    app.state.index_event_listener = listener
+    await listener.start()
+    try:
+        yield
+    finally:
+        await listener.stop()
+        await engine.dispose()
 
 
 def create_app() -> FastAPI:
@@ -82,7 +93,9 @@ def create_app() -> FastAPI:
 
     # REST-04: also flatten RequestValidationError to {error:{code,message}} shape.
     @app.exception_handler(RequestValidationError)
-    async def _flatten_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:  # noqa: ARG001
+    async def _flatten_validation_error(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:  # noqa: ARG001
         # Extract the first meaningful error message from the validation errors.
         errors = exc.errors()
         message = "; ".join(
@@ -101,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(search_router)
     app.include_router(vault_capabilities_router)
     app.include_router(vault_router)
+    app.include_router(ws_router)
     return app
 
 

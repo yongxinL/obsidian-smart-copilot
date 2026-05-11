@@ -33,10 +33,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.context import OperationContext
 from app.encryption import FernetKeyMissing, fernet
-from app.models.index_event import IndexEvent
 from app.models.page import Page
 from app.models.page_version import PageVersion
 from app.models.vault import Vault
+from app.notify.publisher import publish_index_event
 from app.settings import settings
 from app.vault.parser import (
     ParsedPage,
@@ -55,7 +55,10 @@ class PageNotFound(Exception):
 class TimelineViolation(Exception):
     """Raised when a timeline mutation is detected on the API write path."""
 
-    def __init__(self, message: str = "Timeline is append-only; existing entries cannot be edited, deleted, or reordered."):
+    def __init__(
+        self,
+        message: str = "Timeline is append-only; existing entries cannot be edited, deleted, or reordered.",
+    ):
         super().__init__(message)
 
 
@@ -200,15 +203,14 @@ async def upsert_page(
         existing.note_type = parsed.frontmatter.get("note_type", "fleeting")
         await session.flush()
 
-        # IndexEvent: updated
-        idx = IndexEvent(
-            user_id=ctx.user_id,
+        # IndexEvent: updated (via LISTEN/NOTIFY pipeline)
+        await publish_index_event(
+            session,
+            ctx,
             event_type="updated",
             page_slug=slug,
             details={"vault_id": str(vault_id), "page_id": str(existing.id)},
         )
-        session.add(idx)
-        await session.flush()
         return existing
     else:
         # Create new page
@@ -237,15 +239,14 @@ async def upsert_page(
         )
         session.add(pv)
 
-        # IndexEvent: created
-        idx = IndexEvent(
-            user_id=ctx.user_id,
+        # IndexEvent: created (via LISTEN/NOTIFY pipeline)
+        await publish_index_event(
+            session,
+            ctx,
             event_type="created",
             page_slug=slug,
             details={"vault_id": str(vault_id)},
         )
-        session.add(idx)
-        await session.flush()
         return page
 
 
@@ -329,15 +330,14 @@ async def soft_delete_page(
     page.delete_reason = reason
     await session.flush()
 
-    # IndexEvent: deleted
-    idx = IndexEvent(
-        user_id=ctx.user_id,
+    # IndexEvent: deleted (via LISTEN/NOTIFY pipeline)
+    await publish_index_event(
+        session,
+        ctx,
         event_type="deleted",
         page_slug=page.slug,
         details={"page_id": str(page_id), "reason": reason},
     )
-    session.add(idx)
-    await session.flush()
 
 
 async def append_timeline(
