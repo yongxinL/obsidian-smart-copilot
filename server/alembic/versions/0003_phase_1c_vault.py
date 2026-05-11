@@ -56,17 +56,17 @@ def upgrade() -> None:
     # Pattern: create new type → add new column with new type → drop old column →
     # rename new column → drop old type → rename new type.
     op.execute(
-        "CREATE TYPE page_note_type_enum_new AS ENUM "
+        "CREATE TYPE pages_note_type_enum_new AS ENUM "
         "('fleeting', 'literature', 'permanent', 'archived_fleeting', 'skill', 'moc')"
     )
     op.execute(
-        "ALTER TABLE pages ADD COLUMN note_type_new page_note_type_enum_new "
-        "NOT NULL DEFAULT 'fleeting'::page_note_type_enum_new"
+        "ALTER TABLE pages ADD COLUMN note_type_new pages_note_type_enum_new "
+        "NOT NULL DEFAULT 'fleeting'::pages_note_type_enum_new"
     )
     op.execute("ALTER TABLE pages DROP COLUMN note_type")
     op.execute("ALTER TABLE pages RENAME COLUMN note_type_new TO note_type")
-    op.execute("DROP TYPE page_note_type_enum")
-    op.execute("ALTER TYPE page_note_type_enum_new RENAME TO page_note_type_enum")
+    op.execute("DROP TYPE pages_note_type_enum")
+    op.execute("ALTER TYPE pages_note_type_enum_new RENAME TO pages_note_type_enum")
 
 
 def downgrade() -> None:
@@ -75,20 +75,20 @@ def downgrade() -> None:
     # with old type → migrate data → drop old column → rename temp column.
     # Then rename types: new type → placeholder → old name.
     op.execute(
-        "CREATE TYPE page_note_type_enum_old AS ENUM "
+        "CREATE TYPE pages_note_type_enum_old AS ENUM "
         "('compiled_truth', 'timeline', 'mixed')"
     )
     op.execute(
-        "ALTER TABLE pages ADD COLUMN note_type_old page_note_type_enum_old "
-        "NOT NULL DEFAULT 'mixed'::page_note_type_enum_old"
+        "ALTER TABLE pages ADD COLUMN note_type_old pages_note_type_enum_old "
+        "NOT NULL DEFAULT 'mixed'::pages_note_type_enum_old"
     )
     op.execute(
-        "UPDATE pages SET note_type_old = 'mixed'::page_note_type_enum_old "
-        "WHERE note_type IS NULL OR note_type = ''::page_note_type_enum"
+        "UPDATE pages SET note_type_old = 'mixed'::pages_note_type_enum_old "
+        "WHERE note_type IS NULL OR note_type = ''::pages_note_type_enum"
     )
     # Map new values to their closest old equivalents
     op.execute(
-        "UPDATE pages SET note_type_old = 'mixed'::page_note_type_enum_old "
+        "UPDATE pages SET note_type_old = 'mixed'::pages_note_type_enum_old "
         "WHERE note_type IN ('fleeting', 'literature', 'permanent', "
         "'archived_fleeting', 'skill', 'moc')"
     )
@@ -96,9 +96,9 @@ def downgrade() -> None:
     op.execute("ALTER TABLE pages RENAME COLUMN note_type_old TO note_type")
     # Clean up types: new type still exists (renamed from _new), rename it away
     # so we can recreate with the old name
-    op.execute("ALTER TYPE page_note_type_enum RENAME TO page_note_type_enum_recycled")
-    op.execute("ALTER TYPE page_note_type_enum_old RENAME TO page_note_type_enum")
-    op.execute("DROP TYPE page_note_type_enum_recycled")
+    op.execute("ALTER TYPE pages_note_type_enum RENAME TO pages_note_type_enum_recycled")
+    op.execute("ALTER TYPE pages_note_type_enum_old RENAME TO pages_note_type_enum")
+    op.execute("DROP TYPE pages_note_type_enum_recycled")
 
     # ── Step 2: Drop columns added in upgrade ──────────────────────────────────
     op.drop_constraint("fk_pages_deleted_by_users", "pages", type_="foreignkey")

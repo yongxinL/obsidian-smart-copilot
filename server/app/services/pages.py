@@ -25,6 +25,7 @@ from app.models.vault import Vault
 from app.settings import settings
 from app.vault.parser import (
     ParsedPage,
+    VaultTimelineError as _VaultTimelineError,
     assert_timeline_append_only,
     extract_wikilinks,
     parse_vault_file,
@@ -76,15 +77,29 @@ async def _find_slug_match(
     4. Strip leading path components to derive resolved_slug from the matched slug.
     5. No match: return None (forward references are valid — never reject).
     """
-    search_target = target_text.lstrip("/")
-    # Build ILIKE pattern to match slug ending with search_target
-    # Handles both single-component and multi-component targets
-    like_pattern = f"%/{search_target}"
+    # Strip leading "/" and normalize spaces to hyphens for slug matching
+    # e.g., [[Target Note]] → "target-note" → matches slug "target-note"
+    search_target = target_text.lstrip("/").replace(" ", "-").lower()
 
-    def _execute_match(vault_ids: list[uuid.UUID]) -> Page | None:
+    async def _execute_match(vault_ids: list[uuid.UUID]) -> Page | None:
         if not vault_ids:
             return None
-        result = session.execute(
+        # Try exact match first (handles simple slugs like "target-note")
+        exact_result = await session.execute(
+            select(Page)
+            .where(
+                Page.vault_id.in_(vault_ids),
+                Page.slug == search_target,
+                Page.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        exact_match = exact_result.scalar_one_or_none()
+        if exact_match is not None:
+            return exact_match
+        # Then try ILIKE pattern for nested paths (e.g., "projects/target-note")
+        like_pattern = f"%/{search_target}"
+        result = await session.execute(
             select(Page)
             .where(
                 Page.vault_id.in_(vault_ids),
@@ -99,14 +114,14 @@ async def _find_slug_match(
     if namespace == "shared":
         if shared_vault_id is None:
             return None
-        return _execute_match([shared_vault_id])
+        return await _execute_match([shared_vault_id])
     else:
         # Private namespace: search user vault first, then shared as fallback
-        private_first = _execute_match([user_vault_id])
+        private_first = await _execute_match([user_vault_id])
         if private_first is not None:
             return private_first
         if shared_vault_id is not None:
-            return _execute_match([shared_vault_id])
+            return await _execute_match([shared_vault_id])
         return None
 
 

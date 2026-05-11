@@ -19,7 +19,7 @@ from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True, loop_scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def _patch_session_factory(test_engine: AsyncEngine) -> AsyncIterator[None]:
     """Redirect session_with_rls to use the test engine pool (not prod DB).
 
@@ -119,8 +119,11 @@ async def seed_page(
     async with factory() as session:
         await session.execute(
             text(
-                "INSERT INTO pages (id, vault_id, slug, type, note_type, frontmatter, compiled_truth, content_hash, created_at, updated_at) "
-                "VALUES (:id, :vid, 'seed-page', 'note', 'fleeting', '{}', 'Seed content', 'abc123def456789a', now(), now())"
+                "INSERT INTO pages (id, vault_id, slug, type, note_type, frontmatter, "
+                "compiled_truth, timeline, content_hash, deleted_at, deleted_by, delete_reason, "
+                "created_at, updated_at) "
+                "VALUES (:id, :vid, 'seed-page', 'note', 'fleeting', '{}', 'Seed content', "
+                "'', 'abc123def456789a', NULL, NULL, NULL, now(), now())"
             ),
             {"id": pid, "vid": seed_vault},
         )
