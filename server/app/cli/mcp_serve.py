@@ -12,6 +12,9 @@ import argparse
 import sys
 
 from app.mcp import server as mcp_server
+from app.mcp.server import (
+    main_stdio,  # noqa: E402 — imported after asyncio, not circular
+)
 
 
 def add_serve_to_mcp_subparser(mcp_subsubparsers: argparse._SubParsersAction) -> None:
@@ -30,7 +33,7 @@ def add_serve_to_mcp_subparser(mcp_subsubparsers: argparse._SubParsersAction) ->
 
 async def _handle_mcp_serve(args: argparse.Namespace) -> int:
     if args.stdio:
-        return mcp_server.main_stdio()
+        return main_stdio()
     if args.http:
         # Replace sys.argv so the embedded argparse in mcp.server picks up --port.
         sys.argv = ["app.mcp.server", "--http", "--port", str(args.port)]
