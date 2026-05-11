@@ -41,12 +41,15 @@ from sqlalchemy.ext.asyncio import (
 from testcontainers.postgres import PostgresContainer
 
 from app.models import Base  # noqa: F401 — side-effect: registers all 32 tables
+from app.main import app
 
 _fernet_key = "T8YTnEbNGq9aYUOA3LjL6PLghE15Vrn-uFO3chFiOEU="
 _jwt_key = "test-signing-key-min-32-bytes-aaaaaaaaaaaaaaaaaaaa"
 _os.environ.setdefault("SMARTCOPILOT_FERNET_KEY", _fernet_key)
 _os.environ.setdefault("SMARTCOPILOT_JWT_SIGNING_KEY", _jwt_key)
 del _fernet_key, _jwt_key, _os
+
+import httpx
 
 POSTGRES_IMAGE = "pgvector/pgvector:pg16"
 SERVER_DIR = Path(__file__).resolve().parent.parent.parent  # server/
@@ -118,3 +121,49 @@ async def db_session(test_engine) -> AsyncIterator[AsyncSession]:
                 await session.rollback()
             except Exception:  # noqa: BLE001 — defensive cleanup only
                 pass
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def patch_async_session_factory(test_engine):
+    """Patch async_session_factory to use test_engine so app routes use the testcontainer DB.
+
+    Patches BOTH database.py and dependencies.py so that get_db_session (FastAPI
+    dependency) and session_with_rls (CLI/MCP path) both resolve to test_engine.
+    """
+    from app import database as _db_mod
+    from app.dependencies import session_with_rls as _swsrl
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    # Create a sessionmaker bound to test_engine (not the engine itself)
+    test_factory = async_sessionmaker(
+        bind=test_engine,
+        expire_on_commit=False,
+    )
+
+    # Swap out async_session_factory so all sessions use testcontainer
+    old_factory = _db_mod.async_session_factory
+    _db_mod.async_session_factory = test_factory
+    _swsrl.__globals__["async_session_factory"] = test_factory
+
+    yield test_factory
+
+    # Restore
+    _db_mod.async_session_factory = old_factory
+    _swsrl.__globals__["async_session_factory"] = old_factory
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def app_client(patch_async_session_factory) -> httpx.AsyncClient:
+    """HTTP client for REST integration tests bound to the FastAPI app.
+
+    patch_async_session_factory ensures that all FastAPI routes (and their
+    get_db_session dependency) use the testcontainer via the patched
+    async_session_factory. This allows httpx.AsyncClient to correctly exercise
+    routes with the migrated test DB.
+    """
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+        follow_redirects=True,
+    ) as client:
+        yield client

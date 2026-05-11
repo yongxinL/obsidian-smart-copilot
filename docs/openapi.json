@@ -204,10 +204,735 @@
           }
         }
       }
+    },
+    "/api/v1/pages": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "List Pages Endpoint",
+        "operationId": "list_pages_endpoint_api_v1_pages_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pages/{slug}": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Read Page Endpoint",
+        "operationId": "read_page_endpoint_api_v1_pages__slug__get",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Put Page Endpoint",
+        "operationId": "put_page_endpoint_api_v1_pages__slug__put",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageWriteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageWriteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Delete Page Endpoint",
+        "operationId": "delete_page_endpoint_api_v1_pages__slug__delete",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Page Endpoint Api V1 Pages  Slug  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pages/{slug}/timeline": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Append Timeline Endpoint",
+        "operationId": "append_timeline_endpoint_api_v1_pages__slug__timeline_post",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimelineAppendIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Append Timeline Endpoint Api V1 Pages  Slug  Timeline Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pages/{slug}/compiled_truth": {
+      "put": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Update Compiled Truth Endpoint",
+        "operationId": "update_compiled_truth_endpoint_api_v1_pages__slug__compiled_truth_put",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompiledTruthIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Compiled Truth Endpoint Api V1 Pages  Slug  Compiled Truth Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pages/{slug}/history": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Page History Endpoint",
+        "operationId": "page_history_endpoint_api_v1_pages__slug__history_get",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pages/{slug}/diff": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Page Diff Endpoint",
+        "operationId": "page_diff_endpoint_api_v1_pages__slug__diff_get",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "from_version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "From Version"
+            }
+          },
+          {
+            "name": "to_version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "To Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiffOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pages/{slug}/revert": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Page Revert Endpoint",
+        "operationId": "page_revert_endpoint_api_v1_pages__slug__revert_post",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevertIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Page Revert Endpoint Api V1 Pages  Slug  Revert Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pages/{slug}/backlinks": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Backlinks Endpoint",
+        "operationId": "backlinks_endpoint_api_v1_pages__slug__backlinks_get",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacklinksResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/search": {
+      "post": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Search Endpoint",
+        "operationId": "search_endpoint_api_v1_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/capabilities": {
+      "get": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "Capabilities Endpoint",
+        "description": "REST-05 / D-15: same payload as the capability_discovery MCP tool.\n\nNo auth required \u2014 capability discovery is public per REST-05.",
+        "operationId": "capabilities_endpoint_api_v1_capabilities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Capabilities Endpoint Api V1 Capabilities Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vault/index/events": {
+      "get": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Index Events Endpoint",
+        "operationId": "index_events_endpoint_api_v1_vault_index_events_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexEventsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "BacklinkOut": {
+        "properties": {
+          "page_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Page Id"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page_id",
+          "slug",
+          "title"
+        ],
+        "title": "BacklinkOut"
+      },
+      "BacklinksResponse": {
+        "properties": {
+          "target_page_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Target Page Id"
+          },
+          "backlinks": {
+            "items": {
+              "$ref": "#/components/schemas/BacklinkOut"
+            },
+            "type": "array",
+            "title": "Backlinks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_page_id",
+          "backlinks"
+        ],
+        "title": "BacklinksResponse"
+      },
+      "CompiledTruthIn": {
+        "properties": {
+          "compiled_truth": {
+            "type": "string",
+            "maxLength": 10000000,
+            "minLength": 0,
+            "title": "Compiled Truth"
+          }
+        },
+        "type": "object",
+        "required": [
+          "compiled_truth"
+        ],
+        "title": "CompiledTruthIn"
+      },
+      "DiffOut": {
+        "properties": {
+          "page_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Page Id"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "from_version": {
+            "type": "integer",
+            "title": "From Version"
+          },
+          "to_version": {
+            "type": "integer",
+            "title": "To Version"
+          },
+          "compiled_truth_diff": {
+            "type": "string",
+            "title": "Compiled Truth Diff"
+          },
+          "timeline_diff": {
+            "type": "string",
+            "title": "Timeline Diff"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page_id",
+          "slug",
+          "from_version",
+          "to_version",
+          "compiled_truth_diff",
+          "timeline_diff"
+        ],
+        "title": "DiffOut"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -220,6 +945,134 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HistoryItem": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "content_hash",
+          "created_at"
+        ],
+        "title": "HistoryItem"
+      },
+      "HistoryOut": {
+        "properties": {
+          "page_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Page Id"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryItem"
+            },
+            "type": "array",
+            "title": "Versions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page_id",
+          "slug",
+          "versions"
+        ],
+        "title": "HistoryOut"
+      },
+      "IndexEventItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "event_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Type"
+          },
+          "page_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Slug"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "page_slug",
+          "details",
+          "created_at"
+        ],
+        "title": "IndexEventItem"
+      },
+      "IndexEventsOut": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/IndexEventItem"
+            },
+            "type": "array",
+            "title": "Events"
+          },
+          "next_since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Since"
+          }
+        },
+        "type": "object",
+        "required": [
+          "events",
+          "next_since"
+        ],
+        "title": "IndexEventsOut"
       },
       "LoginIn": {
         "properties": {
@@ -242,6 +1095,153 @@
           "password"
         ],
         "title": "LoginIn"
+      },
+      "PageListOut": {
+        "properties": {
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/PageOut"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pages",
+          "total"
+        ],
+        "title": "PageListOut"
+      },
+      "PageOut": {
+        "properties": {
+          "page_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Page Id"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "note_type": {
+            "type": "string",
+            "title": "Note Type"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "frontmatter": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Frontmatter"
+          },
+          "compiled_truth": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compiled Truth"
+          },
+          "timeline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeline"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page_id",
+          "slug",
+          "title",
+          "note_type",
+          "type",
+          "frontmatter",
+          "compiled_truth",
+          "timeline",
+          "content_hash",
+          "updated_at"
+        ],
+        "title": "PageOut"
+      },
+      "PageWriteIn": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 10000000,
+            "minLength": 0,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "PageWriteIn"
+      },
+      "PageWriteOut": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "page_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Page Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ok"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "page_id",
+          "version"
+        ],
+        "title": "PageWriteOut"
       },
       "ReauthIn": {
         "properties": {
@@ -275,6 +1275,163 @@
           "refresh_token"
         ],
         "title": "RefreshIn"
+      },
+      "RevertIn": {
+        "properties": {
+          "target_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Target Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_version"
+        ],
+        "title": "RevertIn"
+      },
+      "SearchIn": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 20
+          },
+          "namespace": {
+            "type": "string",
+            "enum": [
+              "private",
+              "shared",
+              "all"
+            ],
+            "title": "Namespace",
+            "default": "private"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "SearchIn"
+      },
+      "SearchResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchResultItem"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "search_type": {
+            "type": "string",
+            "title": "Search Type",
+            "default": "fts_v1"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results",
+          "total",
+          "query"
+        ],
+        "title": "SearchResponse"
+      },
+      "SearchResultItem": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "note_type": {
+            "type": "string",
+            "title": "Note Type"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet"
+          },
+          "matched_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Matched Fields"
+          },
+          "page_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Page Id"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "chunk_hits": {
+            "items": {},
+            "type": "array",
+            "title": "Chunk Hits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "title",
+          "note_type",
+          "score",
+          "snippet",
+          "matched_fields",
+          "page_id",
+          "updated_at"
+        ],
+        "title": "SearchResultItem"
+      },
+      "TimelineAppendIn": {
+        "properties": {
+          "entry": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Entry"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entry"
+        ],
+        "title": "TimelineAppendIn"
       },
       "TokenPair": {
         "properties": {
