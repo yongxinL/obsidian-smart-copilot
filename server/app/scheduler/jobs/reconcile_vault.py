@@ -43,77 +43,89 @@ async def reconcile_vault() -> None:
         vaults = vaults_result.scalars().all()
 
         for vault in vaults:
-            vault_path = Path(vault.path)
-            if not vault_path.exists():
-                log.warning(
-                    "vault_path_missing", vault_id=str(vault.id), path=str(vault_path)
-                )
-                continue
-
-            # 2. Build disk inventory: slug -> (content_hash, full_path)
-            disk_slugs: dict[str, tuple[str, Path]] = {}
-            for md_file in vault_path.rglob("*.md"):
-                try:
-                    raw = md_file.read_bytes()
-                except OSError:
-                    continue
-                slug = sanitize_filename_to_slug(md_file.name)
-                if slug != Path(md_file.name).stem:
+            try:
+                vault_path = Path(vault.path)
+                if not vault_path.exists():
                     log.warning(
-                        "slug_sanitized",
-                        original=md_file.name,
-                        slug=slug,
+                        "vault_path_missing",
                         vault_id=str(vault.id),
+                        path=str(vault_path),
                     )
-                content_hash = xxhash.xxh64(raw).hexdigest()
-                disk_slugs[slug] = (content_hash, md_file)
+                    continue
 
-            # 3. Load DB inventory for this vault: slug -> (content_hash, page_id)
-            pages_result = await session.execute(
-                select(Page.id, Page.slug, Page.content_hash).where(
-                    Page.vault_id == vault.id,
-                    Page.deleted_at.is_(None),
-                )
-            )
-            db_slugs: dict[str, tuple[str, object]] = {
-                row.slug: (row.content_hash, row.id) for row in pages_result
-            }
-
-            # 4. Reconcile: files on disk not in DB OR hash changed
-            for slug, (disk_hash, md_path) in disk_slugs.items():
-                db_hash, _ = db_slugs.get(slug, (None, None))
-                if db_hash == disk_hash:
-                    continue  # IDX-03: skip unchanged
-                try:
-                    raw = md_path.read_bytes()
-                    parsed = parse_vault_file(raw)
-                    await upsert_page(
-                        session,
-                        ctx,
-                        vault_id=vault.id,
-                        slug=slug,
-                        parsed=parsed,
-                        enforce_timeline=False,  # D-03: reconciler is like watchdog
-                    )
-                    log.info("page_reconciled", slug=slug, vault_id=str(vault.id))
-                except Exception as exc:  # noqa: BLE001
-                    log.error("reconcile_upsert_failed", slug=slug, error=str(exc))
-
-            # 5. Reconcile: DB pages with no corresponding disk file
-            for slug, (_, page_id) in db_slugs.items():
-                if slug not in disk_slugs:
+                # 2. Build disk inventory: slug -> (content_hash, full_path)
+                disk_slugs: dict[str, tuple[str, Path]] = {}
+                for md_file in vault_path.rglob("*.md"):
                     try:
-                        await soft_delete_page(
+                        raw = md_file.read_bytes()
+                    except OSError:
+                        continue
+                    slug = sanitize_filename_to_slug(md_file.name)
+                    if slug != Path(md_file.name).stem:
+                        log.warning(
+                            "slug_sanitized",
+                            original=md_file.name,
+                            slug=slug,
+                            vault_id=str(vault.id),
+                        )
+                    content_hash = xxhash.xxh64(raw).hexdigest()
+                    disk_slugs[slug] = (content_hash, md_file)
+
+                # 3. Load DB inventory for this vault: slug -> (content_hash, page_id)
+                pages_result = await session.execute(
+                    select(Page.id, Page.slug, Page.content_hash).where(
+                        Page.vault_id == vault.id,
+                        Page.deleted_at.is_(None),
+                    )
+                )
+                db_slugs: dict[str, tuple[str, object]] = {
+                    row.slug: (row.content_hash, row.id) for row in pages_result
+                }
+
+                # 4. Reconcile: files on disk not in DB OR hash changed
+                for slug, (disk_hash, md_path) in disk_slugs.items():
+                    db_hash, _ = db_slugs.get(slug, (None, None))
+                    if db_hash == disk_hash:
+                        continue  # IDX-03: skip unchanged
+                    try:
+                        raw = md_path.read_bytes()
+                        parsed = parse_vault_file(raw)
+                        await upsert_page(
                             session,
                             ctx,
-                            page_id=page_id,
-                            reason="reconciler_file_missing",
+                            vault_id=vault.id,
+                            slug=slug,
+                            parsed=parsed,
+                            enforce_timeline=False,  # D-03: reconciler is like watchdog
                         )
-                        log.info("page_soft_deleted", slug=slug, vault_id=str(vault.id))
+                        log.info("page_reconciled", slug=slug, vault_id=str(vault.id))
                     except Exception as exc:  # noqa: BLE001
-                        log.error(
-                            "reconcile_soft_delete_failed", slug=slug, error=str(exc)
-                        )
+                        log.error("reconcile_upsert_failed", slug=slug, error=str(exc))
 
-        await session.commit()
+                # 5. Reconcile: DB pages with no corresponding disk file
+                for slug, (_, page_id) in db_slugs.items():
+                    if slug not in disk_slugs:
+                        try:
+                            await soft_delete_page(
+                                session,
+                                ctx,
+                                page_id=page_id,
+                                reason="reconciler_file_missing",
+                            )
+                            log.info(
+                                "page_soft_deleted", slug=slug, vault_id=str(vault.id)
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            log.error(
+                                "reconcile_soft_delete_failed",
+                                slug=slug,
+                                error=str(exc),
+                            )
+
+                await session.commit()  # per-vault commit INSIDE loop — CR-01 fix
+            except Exception as exc:  # noqa: BLE001
+                log.error(
+                    "reconcile_vault_failed", vault_id=str(vault.id), error=str(exc)
+                )
+                await session.rollback()
     log.info("reconcile_vault_complete")
