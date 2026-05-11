@@ -1,4 +1,5 @@
 """smartcopilot mcp token — create / list / revoke."""
+
 from __future__ import annotations
 
 import argparse
@@ -13,10 +14,18 @@ from app.services.users import get_user_by_username, normalize_username
 def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("mcp", help="MCP commands")
     msub = p.add_subparsers(dest="mcp_command", required=True)
+
+    # Phase 1d: extend `mcp` parent with `serve` subcommand.
+    from app.cli.mcp_serve import add_serve_to_mcp_subparser
+
+    add_serve_to_mcp_subparser(msub)
+
     token = msub.add_parser("token", help="MCP bearer tokens")
     tsub = token.add_subparsers(dest="token_command", required=True)
 
-    create = tsub.add_parser("create", help="create an MCP token (plaintext shown ONCE)")
+    create = tsub.add_parser(
+        "create", help="create an MCP token (plaintext shown ONCE)"
+    )
     create.add_argument("--user", required=True, help="username")
     create.add_argument("--name", default=None)
     create.set_defaults(func=_handle_create)
