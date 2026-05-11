@@ -1,5 +1,5 @@
-# Smart Copilot — pre-commit hooks (Phase 1a)
-# Ruff lint + format. OpenAPI regeneration deferred to Phase 1c.
+# Smart Copilot — pre-commit hooks
+# Ruff lint + format. OpenAPI regeneration on route/service/model changes (D-12/D-13).
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.12
@@ -7,3 +7,12 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
+  - repo: local
+    hooks:
+      - id: regen-openapi
+        name: Regenerate OpenAPI spec (D-12/D-13)
+        entry: python scripts/regen_openapi.py
+        language: system
+        types: [python]
+        files: ^server/app/(routes|services|models)/.*\.py$
+        pass_filenames: false
