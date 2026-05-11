@@ -90,7 +90,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 break
             await ws.send_json({"type": "index_event", "data": event})
     except WebSocketDisconnect:
-        pass
+        log.info("ws_client_disconnected", user_id=str(user_id) if user_id else None)
     finally:
         if queue is not None and user_id is not None:
             with contextlib.suppress(Exception):
