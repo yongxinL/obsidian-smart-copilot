@@ -16,3 +16,5 @@ watchdog>=4.0
 xxhash>=3.0
 python-frontmatter>=1.1
 markdown-it-py>=3.0
+mcp>=1.25,<2
+apscheduler>=3.10,<4
