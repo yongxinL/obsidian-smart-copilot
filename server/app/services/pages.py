@@ -8,16 +8,31 @@ D-09: wikilink resolution stored in frontmatter._resolved_links; no writes to li
 VAULT-03: shared vault write policy enforced per settings.shared_vault_write_policy.
 VAULT-07: content-hash deduplication — re-index skipped when content_hash unchanged.
 VAULT-08: page_versions snapshot on every update.
+
+Phase 1d extensions:
+  - search_pages_fts: PostgreSQL FTS via websearch_to_tsquery + GIN on pages.search_vector
+  - list_pages: paginated page listing by vault_id
+  - get_page_history: ordered version list from page_versions
+  - get_page_diff: unified diff between two versions
+  - revert_page: restore a page to a prior version snapshot
+  - get_backlinks_for_page: scan _resolved_links for incoming references
+  - vault_stats: counts and byte-size for a vault
+  - vault_health: DB/fernet/watchdog status
 """
 
 from __future__ import annotations
 
+import difflib
 import uuid
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Literal
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.context import OperationContext
+from app.encryption import FernetKeyMissing, fernet
 from app.models.index_event import IndexEvent
 from app.models.page import Page
 from app.models.page_version import PageVersion
@@ -25,7 +40,6 @@ from app.models.vault import Vault
 from app.settings import settings
 from app.vault.parser import (
     ParsedPage,
-    VaultTimelineError as _VaultTimelineError,
     assert_timeline_append_only,
     extract_wikilinks,
     parse_vault_file,
@@ -408,3 +422,370 @@ async def resolve_and_store_wikilinks(
 
     page.frontmatter["_resolved_links"] = resolved_list
     await session.flush()
+
+
+# ----------------------------------------------------------------------
+# Phase 1d — FTS, history, diff, revert, backlinks, stats, health
+# ----------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class SearchHit:
+    """Full-text search hit with ranked score and matched-field indicators."""
+
+    page_id: uuid.UUID
+    slug: str
+    title: str | None
+    note_type: str | None
+    score: float
+    snippet: str
+    matched_fields: list[str]
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PageVersionSummary:
+    """One entry in the version history for a page."""
+
+    version: int
+    content_hash: str
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PageDiff:
+    """Unified diffs between two snapshots of a page."""
+
+    from_version: int
+    to_version: int
+    compiled_truth_diff: str
+    timeline_diff: str
+
+
+@dataclass(frozen=True, slots=True)
+class BacklinkHit:
+    """A live page that links to the target page via _resolved_links."""
+
+    page_id: uuid.UUID
+    slug: str
+    title: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class VaultStats:
+    """Aggregate counts and byte-size for a vault."""
+
+    live_pages: int
+    deleted_pages: int
+    total_bytes: int
+    last_updated_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class VaultHealth:
+    """Health-check result for the vault subsystem."""
+
+    db_ok: bool
+    fernet_ok: bool
+    watchdog_alive: bool | None = None
+
+
+async def search_pages_fts(
+    session: AsyncSession,
+    ctx: OperationContext,  # noqa: ARG001 — accepted for future scoping; vault_id is explicit
+    *,
+    vault_id: uuid.UUID,
+    query: str,
+    limit: int = 20,
+    namespace: Literal["private", "shared", "all"] = "private",  # noqa: ARG001 — Phase 1d uses vault_id directly
+) -> list[SearchHit]:
+    """Full-text search via PostgreSQL websearch_to_tsquery + GIN index.
+
+    websearch_to_tsquery is tried first; plainto_tsquery is used as fallback
+    when websearch_to_tsquery parses an empty query (e.g. "&&&").
+    """
+    if not query or not query.strip():
+        raise ValueError("query must be non-empty")
+    limit = max(1, min(int(limit), 100))
+
+    sql = """
+        WITH q AS (
+            SELECT
+                COALESCE(NULLIF(websearch_to_tsquery('english', :q), ''::tsquery),
+                         plainto_tsquery('english', :q)) AS tsq
+        )
+        SELECT
+            p.id, p.slug,
+            p.frontmatter->>'title' AS title,
+            p.note_type,
+            p.updated_at,
+            ts_rank(p.search_vector, q.tsq) AS score,
+            ts_headline(
+                'english',
+                COALESCE(p.compiled_truth, ''),
+                q.tsq,
+                'MaxFragments=1,MaxWords=20'
+            ) AS snippet,
+            (to_tsvector('english', COALESCE(p.frontmatter->>'title', '')) @@ q.tsq) AS title_match,
+            (to_tsvector('english', COALESCE(p.compiled_truth, '')) @@ q.tsq) AS truth_match
+        FROM pages p, q
+        WHERE p.vault_id = :vid
+          AND p.deleted_at IS NULL
+          AND p.search_vector @@ q.tsq
+        ORDER BY score DESC, p.updated_at DESC
+        LIMIT :lim
+    """
+    rows = (
+        (
+            await session.execute(
+                text(sql), {"q": query, "vid": str(vault_id), "lim": limit}
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    hits: list[SearchHit] = []
+    for r in rows:
+        matched: list[str] = []
+        if r["title_match"]:
+            matched.append("title")
+        if r["truth_match"]:
+            matched.append("compiled_truth")
+        hits.append(
+            SearchHit(
+                page_id=r["id"],
+                slug=r["slug"],
+                title=r["title"],
+                note_type=r["note_type"],
+                score=float(r["score"]),
+                snippet=r["snippet"] or "",
+                matched_fields=matched,
+                updated_at=r["updated_at"],
+            )
+        )
+    return hits
+
+
+async def list_pages(
+    session: AsyncSession,
+    ctx: OperationContext,  # noqa: ARG001
+    *,
+    vault_id: uuid.UUID,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[Page]:
+    """Paginated live-page listing for a vault, ordered by updated_at desc."""
+    limit = max(1, min(int(limit), 200))
+    offset = max(0, int(offset))
+    rows = await session.execute(
+        select(Page)
+        .where(Page.vault_id == vault_id, Page.deleted_at.is_(None))
+        .order_by(Page.updated_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(rows.scalars().all())
+
+
+async def get_page_history(
+    session: AsyncSession,
+    ctx: OperationContext,  # noqa: ARG001
+    *,
+    page_id: uuid.UUID,
+) -> list[PageVersionSummary]:
+    """All version snapshots for a page, newest first."""
+    rows = await session.execute(
+        select(PageVersion.version, PageVersion.content_hash, PageVersion.created_at)
+        .where(PageVersion.page_id == page_id)
+        .order_by(PageVersion.version.desc())
+    )
+    return [
+        PageVersionSummary(version=v, content_hash=h, created_at=ts)
+        for v, h, ts in rows.all()
+    ]
+
+
+async def get_page_diff(
+    session: AsyncSession,
+    ctx: OperationContext,  # noqa: ARG001
+    *,
+    page_id: uuid.UUID,
+    from_version: int,
+    to_version: int,
+) -> PageDiff:
+    """Compute unified diffs for compiled_truth and timeline between two versions."""
+    rows = (
+        (
+            await session.execute(
+                select(PageVersion).where(
+                    PageVersion.page_id == page_id,
+                    PageVersion.version.in_([from_version, to_version]),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if len(rows) != 2:
+        raise PageNotFound(
+            f"missing one of versions {from_version}, {to_version} for page {page_id}"
+        )
+
+    by_v = {r.version: r for r in rows}
+    a, b = by_v[from_version], by_v[to_version]
+
+    truth_diff = "\n".join(
+        difflib.unified_diff(
+            (a.compiled_truth or "").splitlines(),
+            (b.compiled_truth or "").splitlines(),
+            fromfile=f"v{from_version}",
+            tofile=f"v{to_version}",
+            lineterm="",
+        )
+    )
+    tl_diff = "\n".join(
+        difflib.unified_diff(
+            (a.timeline or "").splitlines(),
+            (b.timeline or "").splitlines(),
+            fromfile=f"v{from_version}",
+            tofile=f"v{to_version}",
+            lineterm="",
+        )
+    )
+    return PageDiff(
+        from_version=from_version,
+        to_version=to_version,
+        compiled_truth_diff=truth_diff,
+        timeline_diff=tl_diff,
+    )
+
+
+async def revert_page(
+    session: AsyncSession,
+    ctx: OperationContext,
+    *,
+    vault_id: uuid.UUID,
+    slug: str,
+    target_version: int,
+) -> Page:
+    """Restore a page to the content of a prior version snapshot."""
+    page = await read_page(session, vault_id=vault_id, slug=slug)
+    target = (
+        await session.execute(
+            select(PageVersion).where(
+                PageVersion.page_id == page.id,
+                PageVersion.version == target_version,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if target is None:
+        raise PageNotFound(f"version {target_version} not found for page {slug}")
+
+    parsed = ParsedPage(
+        frontmatter=dict(target.frontmatter),
+        compiled_truth=target.compiled_truth or "",
+        timeline=target.timeline or "",
+        body_shape=None,  # type: ignore[arg-type] — not used on revert
+        content_hash=target.content_hash,
+    )
+    return await upsert_page(
+        session,
+        ctx,
+        vault_id=vault_id,
+        slug=slug,
+        parsed=parsed,
+        enforce_timeline=False,  # revert is service-controlled; bypass D-02
+    )
+
+
+async def get_backlinks_for_page(
+    session: AsyncSession,
+    ctx: OperationContext,  # noqa: ARG001
+    *,
+    vault_id: uuid.UUID,
+    target_page_id: uuid.UUID,
+) -> list[BacklinkHit]:
+    """Find live pages in the vault whose _resolved_links contains target_page_id."""
+    sql = """
+        SELECT p.id, p.slug, p.frontmatter->>'title' AS title
+        FROM pages p
+        WHERE p.vault_id = :vid
+          AND p.deleted_at IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(
+                       COALESCE(p.frontmatter->'_resolved_links', '[]'::jsonb)
+                   ) AS link
+              WHERE link->>'page_id' = :tpid
+          )
+        ORDER BY p.slug ASC
+    """
+    rows = (
+        (
+            await session.execute(
+                text(sql), {"vid": str(vault_id), "tpid": str(target_page_id)}
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    return [
+        BacklinkHit(page_id=r["id"], slug=r["slug"], title=r["title"]) for r in rows
+    ]
+
+
+async def vault_stats(
+    session: AsyncSession,
+    ctx: OperationContext,  # noqa: ARG001
+    *,
+    vault_id: uuid.UUID,
+) -> VaultStats:
+    """Aggregate counts and byte-size for a vault."""
+    row = (
+        await session.execute(
+            select(
+                func.count(Page.id).filter(Page.deleted_at.is_(None)),
+                func.count(Page.id).filter(Page.deleted_at.is_not(None)),
+                func.coalesce(
+                    func.sum(func.length(func.coalesce(Page.compiled_truth, ""))),
+                    0,
+                ),
+                func.max(Page.updated_at),
+            ).where(Page.vault_id == vault_id)
+        )
+    ).one()
+
+    return VaultStats(
+        live_pages=row[0],
+        deleted_pages=row[1],
+        total_bytes=int(row[2]),
+        last_updated_at=row[3],
+    )
+
+
+async def vault_health(
+    session: AsyncSession,
+    ctx: OperationContext,  # noqa: ARG001 — db check is connection-level
+) -> VaultHealth:
+    """Check DB, Fernet key, and watchdog liveness.
+
+    watchdog_alive is None in Phase 1d; Plan 04 will wire pg_notify-based
+    heartbeat detection.
+    """
+    db_ok = True
+    try:
+        await session.execute(text("SELECT 1"))
+    except Exception:  # noqa: BLE001 — degraded, not a crash
+        db_ok = False
+
+    fernet_ok = True
+    try:
+        fernet()
+    except FernetKeyMissing:
+        fernet_ok = False
+
+    return VaultHealth(db_ok=db_ok, fernet_ok=fernet_ok, watchdog_alive=None)
