@@ -40,45 +40,92 @@ def main_stdio() -> int:
     SMARTCOPILOT_MCP_TOKEN is the only auth mechanism for stdio.
     On failure, writes AUTH ERROR to stderr and exits 1 — never writes
     to stdout (JSON-RPC framing must remain clean).
+
+    The entire async lifecycle (auth + MCP stdio loop) runs inside a single
+    anyio.run() call. We thread off the entire lifecycle when called from
+    within an existing asyncio event loop (CLI / pytest subprocess context)
+    to avoid nesting event loops.
     """
+    import anyio
+
     configure_logging()
     log = structlog.get_logger("smart_copilot.mcp.stdio")
 
     token = os.environ.get("SMARTCOPILOT_MCP_TOKEN")
-    result = asyncio.run(validate_bearer(token))
-    if result.error is not None:
-        print(f"AUTH ERROR: {result.error}", file=sys.stderr)
-        return 1
 
-    if result.user_id is None:
-        print("AUTH ERROR: token validated but no user_id returned", file=sys.stderr)
-        return 1
+    def _do_stdio() -> int:
+        """Run the full stdio lifecycle in a fresh anyio event loop."""
 
-    ctx = OperationContext(
-        user_id=result.user_id,
-        role=result.role or "user",
-        transport="mcp_stdio",
-        remote=False,
-        client_name="mcp_stdio",
-        request_id="mcp-stdio",
-        mcp_token_id=result.mcp_token_id,
-    )
-    log.info("stdio_authenticated", user_id=str(result.user_id))
+        async def _lifecycle() -> int:
+            # Auth
+            result = await validate_bearer(token)
+            if result.error is not None:
+                print(f"AUTH ERROR: {result.error}", file=sys.stderr)
+                return 1
+            if result.user_id is None:
+                print(
+                    "AUTH ERROR: token validated but no user_id returned",
+                    file=sys.stderr,
+                )
+                return 1
 
-    # Import FastMCP and register tools
-    from mcp.server.fastmcp import FastMCP
+            ctx = OperationContext(
+                user_id=result.user_id,
+                role=result.role or "user",
+                transport="mcp_stdio",
+                remote=False,
+                client_name="mcp_stdio",
+                request_id="mcp-stdio",
+                mcp_token_id=result.mcp_token_id,
+            )
+            log.info("stdio_authenticated", user_id=str(result.user_id))
 
-    from app.mcp.tools import register_all_tools
+            from mcp.server.fastmcp import FastMCP
 
-    mcp = FastMCP("smart-copilot")
-    register_all_tools(mcp, lambda req=None: ctx)  # type: ignore[arg-value]
+            from app.mcp.tools import register_all_tools
 
+            mcp = FastMCP("smart-copilot")
+            register_all_tools(mcp, lambda req=None: ctx)  # type: ignore[arg-value]
+
+            # MCP-08: update last_used_at
+            from sqlalchemy import func, update
+
+            from app.auth.context import system_operation_context
+            from app.auth.mcp_tokens import sha256_token_hash
+            from app.dependencies import session_with_rls
+            from app.models.mcp_token import MCPToken
+
+            ctx_lu = system_operation_context(
+                client_name="mcp_stdio", request_id="stdio-last-used"
+            )
+            h = sha256_token_hash(token)
+            async for session in session_with_rls(ctx_lu):
+                await session.execute(
+                    update(MCPToken)
+                    .where(MCPToken.token_hash == h, MCPToken.revoked_at.is_(None))
+                    .values(last_used_at=func.now())
+                )
+                await session.commit()
+
+            # MCP stdio loop
+            await mcp.run_stdio_async()
+            return 0
+
+        return anyio.run(_lifecycle)
+
+    # Detect if we are inside an asyncio event loop (CLI / pytest subprocess
+    # context where asyncio.run() is the outer caller). Thread-offloading
+    # avoids the "Already running asyncio in this thread" error when
+    # anyio.run() is nested inside asyncio.run().
     try:
-        mcp.run(transport="stdio")
-    except Exception:  # noqa: BLE001 — unexpected exit from tool loop
-        log.exception("stdio_loop_exited_unexpectedly")
-        return 1
-    return 0
+        asyncio.get_running_loop()
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as exc:
+            return exc.submit(_do_stdio).result(timeout=300)
+    except RuntimeError:
+        # No running loop — safe to call anyio.run() directly
+        return _do_stdio()
 
 
 def main_http(port: int = 8787) -> int:
