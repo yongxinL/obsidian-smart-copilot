@@ -3,20 +3,17 @@
 Uses httpx.AsyncClient to test routes directly against the FastAPI app.
 The test DB is provided by conftest.py via testcontainer PostgreSQL.
 """
+
 from __future__ import annotations
 
 import uuid
 
 import pytest
-import pytest_asyncio
 
-from app.auth.context import OperationContext
 from app.auth.tokens import issue_access_jwt
-from app.dependencies import session_with_rls
 from app.models.user import User
 from app.models.vault import Vault
 from app.settings import settings
-
 
 # The app_client fixture is injected by conftest.py via the
 # `pytest_plugins = ["app.tests.conftest"]` mechanism.
@@ -24,23 +21,29 @@ from app.settings import settings
 
 
 async def _seed_user_with_vault(
-    user_id: uuid.UUID, vault_id: uuid.UUID, session,
+    user_id: uuid.UUID,
+    vault_id: uuid.UUID,
+    session,
 ) -> tuple[uuid.UUID, str]:
     """Seed a user + private vault, return (user_id, jwt)."""
-    session.add(User(
-        id=user_id,
-        username=f"user_{user_id.hex[:8]}",
-        email=f"{user_id}@test.local",
-        password_hash="x",
-        role="user",
-        is_active=True,
-    ))
-    session.add(Vault(
-        id=vault_id,
-        owner_user_id=user_id,
-        kind="private",
-        path=f"/vaults/{user_id}",
-    ))
+    session.add(
+        User(
+            id=user_id,
+            username=f"user_{user_id.hex[:8]}",
+            email=f"{user_id}@test.local",
+            password_hash="x",
+            role="user",
+            is_active=True,
+        )
+    )
+    session.add(
+        Vault(
+            id=vault_id,
+            owner_user_id=user_id,
+            kind="private",
+            path=f"/vaults/{user_id}",
+        )
+    )
     await session.commit()
 
     jwt = issue_access_jwt(
@@ -86,7 +89,9 @@ async def test_put_page_creates_and_get_returns_it(db_session, app_client) -> No
 
 
 @pytest.mark.integration
-async def test_put_page_with_timeline_mutation_returns_422(db_session, app_client) -> None:
+async def test_put_page_with_timeline_mutation_returns_422(
+    db_session, app_client
+) -> None:
     """Timeline mutation on API write path returns 422 with timeline_violation envelope."""
     user_id = uuid.uuid4()
     vault_id = uuid.uuid4()
@@ -97,14 +102,18 @@ async def test_put_page_with_timeline_mutation_returns_422(db_session, app_clien
     # v1 with a timeline entry
     await app_client.put(
         f"/api/v1/pages/{slug}",
-        json={"content": "---\ntitle: TL Test\n---\nContent here\n---\n2024-01-01: First entry"},
+        json={
+            "content": "---\ntitle: TL Test\n---\nContent here\n---\n2024-01-01: First entry"
+        },
         headers={"Authorization": f"Bearer {jwt}"},
     )
 
     # v2 mutates the existing timeline entry — should be rejected
     put_resp = await app_client.put(
         f"/api/v1/pages/{slug}",
-        json={"content": "---\ntitle: TL Test\n---\nContent here\n---\n2024-01-01: MODIFIED entry"},
+        json={
+            "content": "---\ntitle: TL Test\n---\nContent here\n---\n2024-01-01: MODIFIED entry"
+        },
         headers={"Authorization": f"Bearer {jwt}"},
     )
     assert put_resp.status_code == 422, put_resp.json()
@@ -129,7 +138,9 @@ async def test_get_unknown_page_returns_404(db_session, app_client) -> None:
 
 
 @pytest.mark.integration
-async def test_unauthenticated_request_returns_401_envelope(db_session, app_client) -> None:
+async def test_unauthenticated_request_returns_401_envelope(
+    db_session, app_client
+) -> None:
     """No Authorization header returns 401 with unauthorized envelope."""
     # No Authorization header
     resp = await app_client.get("/api/v1/pages/some-page")
@@ -139,7 +150,9 @@ async def test_unauthenticated_request_returns_401_envelope(db_session, app_clie
 
 
 @pytest.mark.integration
-async def test_list_pages_returns_count_and_pagination_window(db_session, app_client) -> None:
+async def test_list_pages_returns_count_and_pagination_window(
+    db_session, app_client
+) -> None:
     """Seed 3 pages; GET ?limit=2 returns 2 items."""
     user_id = uuid.uuid4()
     vault_id = uuid.uuid4()

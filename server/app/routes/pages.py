@@ -4,6 +4,7 @@ CLAUDE.md: routes are thin (validate -> service -> response model); services
 take OperationContext + AsyncSession (no FastAPI types). Error envelope per
 REST-04 / main.py:_flatten_http_error.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -18,7 +19,6 @@ from app.auth.context import OperationContext
 from app.auth.deps import require_user
 from app.dependencies import get_db_session
 from app.services.pages import (
-    PageDiff,
     PageNotFound,
     SharedVaultWriteDenied,
     TimelineViolation,
@@ -115,12 +115,16 @@ class BacklinksResponse(BaseModel):
 
 def _page_to_out(page) -> PageOut:  # noqa: ANN001
     return PageOut(
-        page_id=page.id, slug=page.slug,
+        page_id=page.id,
+        slug=page.slug,
         title=(page.frontmatter or {}).get("title"),
-        note_type=page.note_type, type=page.type,
+        note_type=page.note_type,
+        type=page.type,
         frontmatter=page.frontmatter or {},
-        compiled_truth=page.compiled_truth, timeline=page.timeline,
-        content_hash=page.content_hash, updated_at=page.updated_at,
+        compiled_truth=page.compiled_truth,
+        timeline=page.timeline,
+        content_hash=page.content_hash,
+        updated_at=page.updated_at,
     )
 
 
@@ -143,7 +147,9 @@ async def list_pages_endpoint(
         vault_id = await resolve_user_vault_id(session, ctx.user_id)
     except VaultNotFound as exc:
         raise _http_error(404, "not_found", str(exc)) from None
-    pages = await list_pages(session, ctx, vault_id=vault_id, limit=limit, offset=offset)
+    pages = await list_pages(
+        session, ctx, vault_id=vault_id, limit=limit, offset=offset
+    )
     return PageListOut(pages=[_page_to_out(p) for p in pages], total=len(pages))
 
 
@@ -171,8 +177,10 @@ async def put_page_endpoint(
     try:
         vault_id = await resolve_user_vault_id(session, ctx.user_id)
         page = await write_page(
-            session, ctx,
-            slug=slug, raw_content=payload.content.encode("utf-8"),
+            session,
+            ctx,
+            slug=slug,
+            raw_content=payload.content.encode("utf-8"),
             vault_id=vault_id,
         )
         await session.commit()
@@ -185,7 +193,9 @@ async def put_page_endpoint(
     except ValueError as exc:  # validate_slug
         raise _http_error(422, "validation_error", str(exc)) from None
     history = await get_page_history(session, ctx, page_id=page.id)
-    return PageWriteOut(slug=page.slug, page_id=page.id, version=history[0].version if history else 1)
+    return PageWriteOut(
+        slug=page.slug, page_id=page.id, version=history[0].version if history else 1
+    )
 
 
 @router.delete("/{slug}")
@@ -213,7 +223,9 @@ async def append_timeline_endpoint(
 ) -> dict:
     try:
         vault_id = await resolve_user_vault_id(session, ctx.user_id)
-        page = await append_timeline(session, ctx, vault_id=vault_id, slug=slug, entry=payload.entry)
+        page = await append_timeline(
+            session, ctx, vault_id=vault_id, slug=slug, entry=payload.entry
+        )
         await session.commit()
     except (VaultNotFound, PageNotFound) as exc:
         raise _http_error(404, "not_found", str(exc)) from None
@@ -237,12 +249,17 @@ async def update_compiled_truth_endpoint(
     new_hash = xxhash.xxh64(new_content).hexdigest()
     parsed = ParsedPage(
         frontmatter=dict(page.frontmatter or {}),
-        compiled_truth=new_truth, timeline=page.timeline or "",
+        compiled_truth=new_truth,
+        timeline=page.timeline or "",
         body_shape=None,  # type: ignore[arg-type]
         content_hash=new_hash,
     )
     new_page = await upsert_page(
-        session, ctx, vault_id=vault_id, slug=slug, parsed=parsed,
+        session,
+        ctx,
+        vault_id=vault_id,
+        slug=slug,
+        parsed=parsed,
         enforce_timeline=False,
     )
     await session.commit()
@@ -261,8 +278,16 @@ async def page_history_endpoint(
     except (VaultNotFound, PageNotFound) as exc:
         raise _http_error(404, "not_found", str(exc)) from None
     versions = await get_page_history(session, ctx, page_id=page.id)
-    return HistoryOut(page_id=page.id, slug=page.slug,
-                      versions=[HistoryItem(version=v.version, content_hash=v.content_hash, created_at=v.created_at) for v in versions])
+    return HistoryOut(
+        page_id=page.id,
+        slug=page.slug,
+        versions=[
+            HistoryItem(
+                version=v.version, content_hash=v.content_hash, created_at=v.created_at
+            )
+            for v in versions
+        ],
+    )
 
 
 @router.get("/{slug}/diff", response_model=DiffOut)
@@ -276,10 +301,23 @@ async def page_diff_endpoint(
     try:
         vault_id = await resolve_user_vault_id(session, ctx.user_id)
         page = await read_page(session, vault_id=vault_id, slug=slug)
-        diff = await get_page_diff(session, ctx, page_id=page.id, from_version=from_version, to_version=to_version)
+        diff = await get_page_diff(
+            session,
+            ctx,
+            page_id=page.id,
+            from_version=from_version,
+            to_version=to_version,
+        )
     except (VaultNotFound, PageNotFound) as exc:
         raise _http_error(404, "not_found", str(exc)) from None
-    return DiffOut(page_id=page.id, slug=page.slug, from_version=diff.from_version, to_version=diff.to_version, compiled_truth_diff=diff.compiled_truth_diff, timeline_diff=diff.timeline_diff)
+    return DiffOut(
+        page_id=page.id,
+        slug=page.slug,
+        from_version=diff.from_version,
+        to_version=diff.to_version,
+        compiled_truth_diff=diff.compiled_truth_diff,
+        timeline_diff=diff.timeline_diff,
+    )
 
 
 @router.post("/{slug}/revert")
@@ -291,12 +329,23 @@ async def page_revert_endpoint(
 ) -> dict:
     try:
         vault_id = await resolve_user_vault_id(session, ctx.user_id)
-        page = await revert_page(session, ctx, vault_id=vault_id, slug=slug, target_version=payload.target_version)
+        page = await revert_page(
+            session,
+            ctx,
+            vault_id=vault_id,
+            slug=slug,
+            target_version=payload.target_version,
+        )
         await session.commit()
     except (VaultNotFound, PageNotFound) as exc:
         raise _http_error(404, "not_found", str(exc)) from None
     history = await get_page_history(session, ctx, page_id=page.id)
-    return {"slug": page.slug, "page_id": str(page.id), "reverted_to": payload.target_version, "new_version": history[0].version}
+    return {
+        "slug": page.slug,
+        "page_id": str(page.id),
+        "reverted_to": payload.target_version,
+        "new_version": history[0].version,
+    }
 
 
 @router.get("/{slug}/backlinks", response_model=BacklinksResponse)
@@ -310,8 +359,12 @@ async def backlinks_endpoint(
         page = await read_page(session, vault_id=vault_id, slug=slug)
     except (VaultNotFound, PageNotFound) as exc:
         raise _http_error(404, "not_found", str(exc)) from None
-    hits = await get_backlinks_for_page(session, ctx, vault_id=vault_id, target_page_id=page.id)
+    hits = await get_backlinks_for_page(
+        session, ctx, vault_id=vault_id, target_page_id=page.id
+    )
     return BacklinksResponse(
         target_page_id=page.id,
-        backlinks=[BacklinkOut(page_id=h.page_id, slug=h.slug, title=h.title) for h in hits],
+        backlinks=[
+            BacklinkOut(page_id=h.page_id, slug=h.slug, title=h.title) for h in hits
+        ],
     )
