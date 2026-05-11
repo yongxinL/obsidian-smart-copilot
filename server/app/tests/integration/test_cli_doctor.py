@@ -56,6 +56,18 @@ def test_doctor_reports_all_d14_sections(postgres_container) -> None:
 
 
 def test_doctor_returns_1_when_fernet_missing() -> None:
-    proc = _run_doctor(fernet_key="")
+    env = __import__("os").environ.copy()
+    env.pop("SMARTCOPILOT_FERNET_KEY", None)
+    env.setdefault(
+        "JWT_SIGNING_KEY",
+        "test-signing-key-min-32-bytes-aaaaaaaaaaaaaaaaaaaa",
+    )
+    proc = subprocess.run(
+        [sys.executable, "-m", "app.cli.main", "doctor"],
+        env=env,
+        capture_output=True,
+        timeout=30,
+        cwd="server",
+    )
     assert proc.returncode != 0
     assert b"SMARTCOPILOT_FERNET_KEY" in proc.stderr

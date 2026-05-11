@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
 import subprocess
 import sys
 import tempfile
-import threading
+import uuid
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.context import system_operation_context
-from app.dependencies import session_with_rls
+from app.auth.password import hash_password
+from app.models.user import User
 from app.models.vault import Vault
 
 pytestmark = pytest.mark.integration
@@ -40,93 +43,77 @@ def _run_page_cli(
     )
 
 
-def _run_in_thread(cli_fn, *args, **kwargs):
-    result = {"rc": -1, "exc": None}
-
-    def _target():
-        try:
-            result["rc"] = cli_fn(*args, **kwargs)
-        except Exception as exc:
-            result["exc"] = exc
-
-    t = threading.Thread(target=_target)
-    t.start()
-    t.join()
-    if result["exc"]:
-        raise result["exc"]
-    return result["rc"]
+@pytest_asyncio.fixture(loop_scope="session")
+async def _page_cli_session(test_engine) -> tuple[async_sessionmaker, str]:
+    """Return a sessionmaker bound to test_engine and the async DB URL."""
+    factory = async_sessionmaker(
+        test_engine, expire_on_commit=False, class_=AsyncSession
+    )
+    sync_url = test_engine.sync_engine.url.render_as_string(hide_password=False)
+    async_url = sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return factory, async_url
 
 
-async def _create_test_user_vault(username: str) -> str:
+async def _create_test_user_vault(factory: async_sessionmaker, username: str) -> str:
     """Create a test user and their private vault; return the username."""
-    import uuid
-
-    from app.auth.password import hash_password
-    from app.models.user import User
-
     norm = username.strip().casefold()
     ctx = system_operation_context(client_name="cli", request_id="test-setup")
-    async for session in session_with_rls(ctx):
-        user = User(
-            id=uuid.uuid4(),
-            username=norm,
-            password_hash=await hash_password("testpass"),
-            role="user",
-            is_active=True,
-        )
-        session.add(user)
-        await session.flush()
-        vault = Vault(
-            id=uuid.uuid4(),
-            owner_user_id=user.id,
-            kind="private",
-            name="test-vault",
-            path=f"/tmp/vault_{norm}",
-        )
-        session.add(vault)
-        await session.commit()
-        return norm
+    async with factory() as session:
+        async with session.begin():
+            user = User(
+                id=uuid.uuid4(),
+                username=norm,
+                password_hash=await hash_password("testpass"),
+                role="user",
+                is_active=True,
+            )
+            session.add(user)
+            await session.flush()
+            vault = Vault(
+                id=uuid.uuid4(),
+                owner_user_id=user.id,
+                kind="private",
+                path=f"/tmp/vault_{norm}",
+            )
+            session.add(vault)
+    return norm
 
 
-async def _delete_test_user(username: str) -> None:
-    from sqlalchemy import text
-
+async def _delete_test_user(factory: async_sessionmaker, username: str) -> None:
+    """Delete test user and their vault/pages."""
     norm = username.strip().casefold()
-    ctx = system_operation_context(client_name="cli", request_id="test-teardown")
-    async for session in session_with_rls(ctx):
-        await session.execute(
-            text(
-                "DELETE FROM pages WHERE vault_id IN (SELECT id FROM vaults WHERE owner_user_id IN (SELECT id FROM users WHERE username = :u))"
-            ),
-            {"u": norm},
-        )
-        await session.execute(
-            text(
-                "DELETE FROM vaults WHERE owner_user_id IN (SELECT id FROM users WHERE username = :u)"
-            ),
-            {"u": norm},
-        )
-        await session.execute(
-            text("DELETE FROM users WHERE username = :u"), {"u": norm}
-        )
-        await session.commit()
+    async with factory() as session:
+        async with session.begin():
+            await session.execute(
+                text(
+                    "DELETE FROM pages WHERE vault_id IN (SELECT id FROM vaults WHERE owner_user_id IN (SELECT id FROM users WHERE username = :u))"
+                ),
+                {"u": norm},
+            )
+            await session.execute(
+                text(
+                    "DELETE FROM vaults WHERE owner_user_id IN (SELECT id FROM users WHERE username = :u)"
+                ),
+                {"u": norm},
+            )
+            await session.execute(
+                text("DELETE FROM users WHERE username = :u"), {"u": norm}
+            )
 
 
 @pytest.mark.integration
-def test_cli_page_put_then_get(postgres_container) -> None:
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cli_page_put_then_get(test_engine) -> None:
     fernet = "T8YTnEbNGq9aYUOA3LjL6PLghE15Vrn-uFO3chFiOEU="
     jwt = "test-signing-key-min-32-bytes-aaaaaaaaaaaaaaaaaaaa"
-    sync_url = postgres_container.get_connection_url()
-    raw_dsn = sync_url.replace("postgresql+psycopg2://", "postgresql://", 1)
-    db_url = raw_dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+    sync_url = test_engine.sync_engine.url.render_as_string(hide_password=False)
+    db_url = sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    factory = async_sessionmaker(
+        test_engine, expire_on_commit=False, class_=AsyncSession
+    )
 
     username = "cli_page_user1"
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_create_test_user_vault(username))
-    finally:
-        loop.close()
+    await _create_test_user_vault(factory, username)
 
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
@@ -134,7 +121,6 @@ def test_cli_page_put_then_get(postgres_container) -> None:
             f.flush()
             tf_path = f.name
 
-        # put
         proc = _run_page_cli(
             [
                 "page",
@@ -154,7 +140,6 @@ def test_cli_page_put_then_get(postgres_container) -> None:
         out = proc.stdout.decode()
         assert "slug=test-page" in out
 
-        # get
         proc = _run_page_cli(
             ["page", "get", "--user", username, "--slug", "test-page"],
             fernet_key=fernet,
@@ -166,22 +151,17 @@ def test_cli_page_put_then_get(postgres_container) -> None:
         assert "slug=test-page" in out
         assert "compiled_truth:" in out
     finally:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(_delete_test_user(username))
-        finally:
-            loop.close()
+        await _delete_test_user(factory, username)
         Path(tf_path).unlink(missing_ok=True)
 
 
 @pytest.mark.integration
-def test_cli_page_put_unknown_user_returns_2(postgres_container) -> None:
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cli_page_put_unknown_user_returns_2(test_engine) -> None:
     fernet = "T8YTnEbNGq9aYUOA3LjL6PLghE15Vrn-uFO3chFiOEU="
     jwt = "test-signing-key-min-32-bytes-aaaaaaaaaaaaaaaaaaaa"
-    sync_url = postgres_container.get_connection_url()
-    raw_dsn = sync_url.replace("postgresql+psycopg2://", "postgresql://", 1)
-    db_url = raw_dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+    sync_url = test_engine.sync_engine.url.render_as_string(hide_password=False)
+    db_url = sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
         f.write("---\ntitle: Test\n---\n# Test\n")
@@ -211,20 +191,18 @@ def test_cli_page_put_unknown_user_returns_2(postgres_container) -> None:
 
 
 @pytest.mark.integration
-def test_cli_page_list_returns_seeded_pages(postgres_container) -> None:
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cli_page_list_returns_seeded_pages(test_engine) -> None:
     fernet = "T8YTnEbNGq9aYUOA3LjL6PLghE15Vrn-uFO3chFiOEU="
     jwt = "test-signing-key-min-32-bytes-aaaaaaaaaaaaaaaaaaaa"
-    sync_url = postgres_container.get_connection_url()
-    raw_dsn = sync_url.replace("postgresql+psycopg2://", "postgresql://", 1)
-    db_url = raw_dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+    sync_url = test_engine.sync_engine.url.render_as_string(hide_password=False)
+    db_url = sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    factory = async_sessionmaker(
+        test_engine, expire_on_commit=False, class_=AsyncSession
+    )
 
     username = "cli_page_list_user"
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_create_test_user_vault(username))
-    finally:
-        loop.close()
+    await _create_test_user_vault(factory, username)
 
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
@@ -261,29 +239,22 @@ def test_cli_page_list_returns_seeded_pages(postgres_container) -> None:
         out = proc.stdout.decode()
         assert "list-test-page" in out
     finally:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(_delete_test_user(username))
-        finally:
-            loop.close()
+        await _delete_test_user(factory, username)
 
 
 @pytest.mark.integration
-def test_cli_page_search_returns_match(postgres_container) -> None:
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cli_page_search_returns_match(test_engine) -> None:
     fernet = "T8YTnEbNGq9aYUOA3LjL6PLghE15Vrn-uFO3chFiOEU="
     jwt = "test-signing-key-min-32-bytes-aaaaaaaaaaaaaaaaaaaa"
-    sync_url = postgres_container.get_connection_url()
-    raw_dsn = sync_url.replace("postgresql+psycopg2://", "postgresql://", 1)
-    db_url = raw_dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+    sync_url = test_engine.sync_engine.url.render_as_string(hide_password=False)
+    db_url = sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    factory = async_sessionmaker(
+        test_engine, expire_on_commit=False, class_=AsyncSession
+    )
 
     username = "cli_page_search_user"
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_create_test_user_vault(username))
-    finally:
-        loop.close()
+    await _create_test_user_vault(factory, username)
 
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
@@ -320,29 +291,22 @@ def test_cli_page_search_returns_match(postgres_container) -> None:
         out = proc.stdout.decode()
         assert "searchable-doc" in out
     finally:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(_delete_test_user(username))
-        finally:
-            loop.close()
+        await _delete_test_user(factory, username)
 
 
 @pytest.mark.integration
-def test_cli_page_delete_then_get_returns_2(postgres_container) -> None:
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cli_page_delete_then_get_returns_2(test_engine) -> None:
     fernet = "T8YTnEbNGq9aYUOA3LjL6PLghE15Vrn-uFO3chFiOEU="
     jwt = "test-signing-key-min-32-bytes-aaaaaaaaaaaaaaaaaaaa"
-    sync_url = postgres_container.get_connection_url()
-    raw_dsn = sync_url.replace("postgresql+psycopg2://", "postgresql://", 1)
-    db_url = raw_dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+    sync_url = test_engine.sync_engine.url.render_as_string(hide_password=False)
+    db_url = sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    factory = async_sessionmaker(
+        test_engine, expire_on_commit=False, class_=AsyncSession
+    )
 
     username = "cli_page_delete_user"
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_create_test_user_vault(username))
-    finally:
-        loop.close()
+    await _create_test_user_vault(factory, username)
 
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
@@ -383,29 +347,22 @@ def test_cli_page_delete_then_get_returns_2(postgres_container) -> None:
         )
         assert proc.returncode == 2
     finally:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(_delete_test_user(username))
-        finally:
-            loop.close()
+        await _delete_test_user(factory, username)
 
 
 @pytest.mark.integration
-def test_cli_stats_returns_count(postgres_container) -> None:
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cli_stats_returns_count(test_engine) -> None:
     fernet = "T8YTnEbNGq9aYUOA3LjL6PLghE15Vrn-uFO3chFiOEU="
     jwt = "test-signing-key-min-32-bytes-aaaaaaaaaaaaaaaaaaaa"
-    sync_url = postgres_container.get_connection_url()
-    raw_dsn = sync_url.replace("postgresql+psycopg2://", "postgresql://", 1)
-    db_url = raw_dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+    sync_url = test_engine.sync_engine.url.render_as_string(hide_password=False)
+    db_url = sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    factory = async_sessionmaker(
+        test_engine, expire_on_commit=False, class_=AsyncSession
+    )
 
     username = "cli_stats_user"
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_create_test_user_vault(username))
-    finally:
-        loop.close()
+    await _create_test_user_vault(factory, username)
 
     try:
         proc = _run_page_cli(
@@ -420,9 +377,4 @@ def test_cli_stats_returns_count(postgres_container) -> None:
         assert "deleted_page_count=" in out
         assert "total_compiled_truth_bytes=" in out
     finally:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(_delete_test_user(username))
-        finally:
-            loop.close()
+        await _delete_test_user(factory, username)

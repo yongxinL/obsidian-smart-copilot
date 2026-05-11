@@ -35,7 +35,7 @@ def test_smartcopilot_help_lists_all_subcommands() -> None:
     for token in (
         "user",
         "mcp",
-        "provider_key",
+        "provider",
         "page",
         "doctor",
         "check-resolvable",
