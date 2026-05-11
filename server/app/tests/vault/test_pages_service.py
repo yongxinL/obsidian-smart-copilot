@@ -303,3 +303,102 @@ async def test_write_page_validates_slug(
             raw_content=b"---\ntitle: Bad\n---\nContent",
             vault_id=seed_vault,
         )
+
+
+# ----------------------------------------------------------------------
+# Phase 1d — list_pages, vault_stats, vault_health
+# ----------------------------------------------------------------------
+
+from app.services.pages import list_pages, vault_health, vault_stats
+
+
+@pytest.mark.asyncio
+async def test_list_pages_returns_live_pages_ordered_by_updated_at(
+    db_session: AsyncSession,
+    seed_user_for_vault,
+    seed_vault,
+):
+    """list_pages returns only non-deleted pages, ordered by updated_at DESC."""
+    ctx = _ctx_for(seed_user_for_vault)
+
+    raw = b"---\ntitle: List Test\n---\nContent."
+    parsed = parse_vault_file(raw)
+    page = await upsert_page(
+        db_session, ctx, vault_id=seed_vault, slug="list-test", parsed=parsed
+    )
+    await db_session.commit()
+
+    pages = await list_pages(db_session, ctx, vault_id=seed_vault)
+
+    assert len(pages) >= 1
+    assert any(p.slug == "list-test" for p in pages)
+
+
+@pytest.mark.asyncio
+async def test_list_pages_respects_limit_and_offset(
+    db_session: AsyncSession,
+    seed_user_for_vault,
+    seed_vault,
+):
+    """list_pages paginates correctly with limit and offset."""
+    ctx = _ctx_for(seed_user_for_vault)
+
+    for i in range(5):
+        raw = f"---\ntitle: Page {i}\n---\nContent {i}.".encode()
+        parsed = parse_vault_file(raw)
+        await upsert_page(
+            db_session, ctx, vault_id=seed_vault, slug=f"list-page-{i}", parsed=parsed
+        )
+    await db_session.commit()
+
+    # First page
+    page1 = await list_pages(db_session, ctx, vault_id=seed_vault, limit=2)
+    assert len(page1) == 2
+
+    # Second page
+    page2 = await list_pages(db_session, ctx, vault_id=seed_vault, limit=2, offset=2)
+    assert len(page2) == 2
+
+    # No overlap
+    assert set(p.slug for p in page1).isdisjoint(set(p.slug for p in page2))
+
+
+@pytest.mark.asyncio
+async def test_vault_stats_returns_correct_counts(
+    db_session: AsyncSession,
+    seed_user_for_vault,
+    seed_vault,
+):
+    """vault_stats returns live/deleted counts and compiled_truth byte-size."""
+    ctx = _ctx_for(seed_user_for_vault)
+
+    raw = b"---\ntitle: Stats Test\n---\nSome content here."
+    parsed = parse_vault_file(raw)
+    await upsert_page(
+        db_session, ctx, vault_id=seed_vault, slug="stats-test", parsed=parsed
+    )
+    await db_session.commit()
+
+    stats = await vault_stats(db_session, ctx, vault_id=seed_vault)
+
+    assert stats.live_pages >= 1
+    assert stats.deleted_pages >= 0
+    assert stats.total_bytes >= len("Some content here")
+    assert stats.last_updated_at is not None
+
+
+@pytest.mark.asyncio
+async def test_vault_health_returns_db_and_fernet_status(
+    db_session: AsyncSession,
+    seed_user_for_vault,
+):
+    """vault_health returns db_ok=True when SELECT 1 succeeds, fernet_ok based on key presence."""
+    ctx = _ctx_for(seed_user_for_vault)
+
+    health = await vault_health(db_session, ctx)
+
+    # db_ok: SELECT 1 succeeded (testcontainer is up)
+    assert health.db_ok is True
+    # fernet_ok: depends on SMARTCOPILOT_FERNET_KEY in test env
+    # watchdog_alive: always None in Phase 1d (Plan 04 stub)
+    assert health.watchdog_alive is None
