@@ -51,6 +51,17 @@ Users can query their personal knowledge vault through AI agents (Claude Desktop
 - **Zero-LLM links:** Deterministic auto-link extraction, no cost
 - **Single Docker:** Easy deployment, homelab-friendly
 
+## Architecture Notes
+
+### File Watching (watchdog)
+
+The vault watchdog runs as a separate supervisord process using `watchdog` library
+(inotify on Linux). The Observer runs in a dedicated OS thread; ALL async indexer
+work is submitted via `asyncio.run_coroutine_threadsafe(coro, loop)` (D-06).
+`loop.call_soon_threadsafe()` is reserved for truly synchronous lightweight callbacks
+only (not the indexing path). Per-path debounce uses a cancellable `threading.Timer`
+dictionary (750ms default, configured via `SMARTCOPILOT_VAULT_WATCH_DEBOUNCE_MS`).
+
 ## Notes
 
 - PRD v26.05.1 is comprehensive (270KB) — use it as primary reference
