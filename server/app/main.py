@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.auth.middleware import TrustedProxyMiddleware
@@ -27,6 +28,10 @@ from app.logging.redaction import configure_logging
 from app.routes.admin import router as admin_router
 from app.routes.auth import router as auth_router
 from app.routes.health import router as health_router
+from app.routes.pages import router as pages_router
+from app.routes.search import router as search_router
+from app.routes.vault import router_capabilities as vault_capabilities_router
+from app.routes.vault import router_vault as vault_router
 from app.settings import settings
 
 
@@ -75,9 +80,27 @@ def create_app() -> FastAPI:
             payload = {"detail": payload}
         return JSONResponse(status_code=exc.status_code, content=payload)
 
+    # REST-04: also flatten RequestValidationError to {error:{code,message}} shape.
+    @app.exception_handler(RequestValidationError)
+    async def _flatten_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:  # noqa: ARG001
+        # Extract the first meaningful error message from the validation errors.
+        errors = exc.errors()
+        message = "; ".join(
+            f"{'.'.join(str(x) for x in e.get('loc', []))}: {e.get('msg', 'invalid')}"
+            for e in errors
+        )
+        return JSONResponse(
+            status_code=422,
+            content={"error": {"code": "validation_error", "message": message}},
+        )
+
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(admin_router)
+    app.include_router(pages_router)
+    app.include_router(search_router)
+    app.include_router(vault_capabilities_router)
+    app.include_router(vault_router)
     return app
 
 

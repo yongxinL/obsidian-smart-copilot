@@ -40,6 +40,7 @@ from app.models.vault import Vault
 from app.settings import settings
 from app.vault.parser import (
     ParsedPage,
+    VaultTimelineError,
     assert_timeline_append_only,
     extract_wikilinks,
     parse_vault_file,
@@ -53,6 +54,9 @@ class PageNotFound(Exception):
 
 class TimelineViolation(Exception):
     """Raised when a timeline mutation is detected on the API write path."""
+
+    def __init__(self, message: str = "Timeline is append-only; existing entries cannot be edited, deleted, or reordered."):
+        super().__init__(message)
 
 
 class SharedVaultWriteDenied(PermissionError):
@@ -171,7 +175,10 @@ async def upsert_page(
 
         # D-02: timeline append-only enforcement on API writes
         if enforce_timeline and parsed.timeline:
-            assert_timeline_append_only(existing.timeline or "", parsed.timeline)
+            try:
+                assert_timeline_append_only(existing.timeline or "", parsed.timeline)
+            except VaultTimelineError as e:
+                raise TimelineViolation(str(e)) from e
 
         # VAULT-08: snapshot existing state before update
         version_num = await _next_version(session, existing.id)
