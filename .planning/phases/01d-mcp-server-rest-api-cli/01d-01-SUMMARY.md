@@ -113,6 +113,15 @@ None - plan executed exactly as written.
 - All 8 helper functions have concrete signatures matching the contract in 01d-01-PLAN.md
 - Migration 0004 is reversible and applies cleanly against testcontainer PostgreSQL
 
+## Self-Check: PASSED
+
+- Migration 0004 ships `search_vector tsvector` column + GIN index `ix_pages_search_vector`
+- All 8 helpers confirmed in `services/pages.py` (grep verified each `^async def` name)
+- FTS uses `websearch_to_tsquery` with `plainto_tsquery` fallback (parameterized, no SQL injection)
+- Zero FastAPI imports in `server/app/services/` (verified via grep -rE)
+- `services/capabilities.py` exists with `get_capabilities()` function
+- 27 integration tests pass across all Phase 1d test files
+
 ---
 *Phase: 01d-mcp-server-rest-api-cli*
 *Completed: 2026-05-11*
