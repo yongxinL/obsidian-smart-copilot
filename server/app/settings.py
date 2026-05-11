@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     # Shared vault write policy (VAULT-03) — "admin_only" | "all_users"
     shared_vault_write_policy: str = Field(default="admin_only")
 
+    # --- Phase 1d: WebSocket + LISTEN/NOTIFY ---
+    notify_dsn_asyncpg: str = Field(
+        default="",
+        validation_alias="SMARTCOPILOT_NOTIFY_DSN",
+    )
+    ws_first_frame_timeout_seconds: float = Field(default=10.0)
+
     @field_validator("smartcopilot_fernet_key")
     @classmethod
     def validate_fernet_key(cls, v: str) -> str:
@@ -77,3 +84,15 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_notify_dsn() -> str:
+    """Return raw asyncpg DSN for LISTEN/NOTIFY connection.
+
+    Prefers SMARTCOPILOT_NOTIFY_DSN if set; otherwise derives from settings.database_url
+    by stripping the '+asyncpg' driver suffix (asyncpg.connect takes a bare DSN).
+    """
+    if settings.notify_dsn_asyncpg:
+        return settings.notify_dsn_asyncpg
+    url = settings.database_url
+    return url.replace("postgresql+asyncpg://", "postgresql://", 1)
