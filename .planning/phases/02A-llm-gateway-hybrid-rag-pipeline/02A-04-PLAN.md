@@ -31,6 +31,8 @@ must_haves:
     - "classify_intent('what does john do?') returns IntentResult(mode='hybrid', should_expand=True) (≥6 words OR question word per D-08)"
     - "classify_intent('@web foo') returns mode='web_stub'; classify_intent('see [[John Smith]]') returns mode='graph' (D-07)"
     - "Multi-query expansion only fires when classify_intent.should_expand is True (D-08); uses llm.router tier='cheap' with response_format json_object; QueryExpansion pydantic model validates exactly 3 paraphrases; ValidationError falls back to [original_query]"
+    - "D-09: graph-intent routing is graph-first; Phase 2a stubs graph traversal as an empty list so the RRF formula compiles end-to-end; when intent.mode=='graph' the stub returns [] which is treated as <3 results, triggering the blend/fallthrough to hybrid path per D-09"
+    - "D-11: search_type field encodes actual retrieval path — 'hybrid_v1' (vector+BM25+graph fused), 'fts_v1' (page-level FTS cold-start fallback), 'bm25_v1' (BM25-only reserved); these exact string literals appear in services/search.py and surface in REST and MCP responses"
     - "hybrid_search returns SearchResult with search_type='hybrid_v1' when HNSW returns ≥1 vector hit; 'fts_v1' when vector_hits is empty (cold-start fallback via search_pages_fts per D-10); 'bm25_v1' is reserved for BM25-only mode (e.g. no embedding available + BM25 still produced hits)"
     - "POST /api/v1/search and brain.search MCP tool both invoke hybrid_search and surface search_type in the response payload; existing fts_v1-only behavior is REPLACED, not duplicated"
   artifacts:

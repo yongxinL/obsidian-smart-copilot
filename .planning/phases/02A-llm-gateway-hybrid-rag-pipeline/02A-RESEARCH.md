@@ -617,22 +617,22 @@ The pages table was built in migration 0003. The planner must verify whether `co
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does `pages` have `compiled_truth_updated_at` and `latest_timeline_ts`?**
    - What we know: stale annotation (D-13) requires comparing these two timestamps per page
    - What's unclear: migration 0003 built the pages table for Phase 1c; it may or may not have added these columns
-   - Recommendation: planner's Wave 0 task reads `models/page.py` and migration 0003; if missing, migration 0005 adds them
+   - RESOLVED: Both columns are absent from the current `Page` model. Migration 0005 (Plan 01 Task 2) adds `compiled_truth_updated_at` and `latest_timeline_ts` unconditionally.
 
 2. **How does `brain.search` upgrade interact with the existing MCP tool signature?**
    - What we know: `brain.search` in `mcp/tools/brain.py` currently calls `search_pages_fts()`; Phase 2a replaces this with `hybrid_search_service()`
    - What's unclear: the MCP tool description string says "Phase 1d: page-level only" — needs updating
-   - Recommendation: Phase 2a rewrites the `brain_search` function body; the tool name/params stay identical for backward compat
+   - RESOLVED: Phase 2a rewrites the `brain_search` function body; tool name, parameters, and return schema stay identical for backward compat. Description string updated to reflect hybrid retrieval (Plan 04 Task 4).
 
 3. **Graph component in RRF (RAG-04): stub or omit?**
    - What we know: RAG-04 specifies "vector + BM25 + graph via RRF" but graph traversal is Phase 2b
    - What's unclear: should Phase 2a include a 0-result graph path as a stub, or simply omit the graph term from RRF?
-   - Recommendation: Per D-09, graph-intent routing routes to `brain.graph.traverse` — Phase 2a includes an empty stub return (`[]`) so the RRF formula compiles; Phase 2b replaces the stub
+   - RESOLVED: Phase 2a includes an empty stub return (`[]`) for the graph component so the RRF formula compiles end-to-end; Phase 2b replaces the stub with real graph traversal (Plan 04 Task 4, per D-09).
 
 ---
 
