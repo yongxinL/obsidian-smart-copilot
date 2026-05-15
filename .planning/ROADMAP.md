@@ -130,7 +130,12 @@ Decimal sub-phases execute in order within their parent integer phase.
   3. pgvector type registered via pool `init` callback (`register_vector` on every new connection); HNSW index created with `m=16, ef_construction=64`; embedding dimension pre-insert assert prevents dimension mismatch
   4. Multi-query expansion generates 3 paraphrases via cheap LLM tier; 4-layer deduplication runs before results returned; intent classifier routes queries to the correct retrieval mode
   5. Embedding migration endpoints (estimate/start/status/cancel) allow dimension-change migration: add column → backfill concurrently → `CREATE INDEX CONCURRENTLY` → atomic rename; migration progresses without downtime
-**Plans**: TBD
+**Plans**: 5 plans (5 waves)
+- [ ] 02A-01-PLAN.md — Wave 1 — Foundation: Settings extension (RRF/tier knobs), Ruff TID gate, migration 0005 (denorm columns + chunk_index), Wave 0 test scaffolds (LLM-01, RAG-06)
+- [ ] 02A-02-PLAN.md — Wave 2 — LLM router (llm/router.py + tiers.py + keys.py + usage.py); per-call api_key; UsageRecorder async_log_success_event (LLM-01, LLM-02, LLM-03, LLM-04, LLM-05)
+- [ ] 02A-03-PLAN.md — Wave 3 — Chunker (tiktoken cl100k_base, D-01..D-06); embedder (1536-dim assert); APScheduler embed_worker; upsert_page chunker hook (RAG-01, RAG-02)
+- [ ] 02A-04-PLAN.md — Wave 4 — Retriever (vector ANN + BM25), reranker (RRF + 4-layer dedup + stale annotation), intent (rule-based + threshold-gated expansion), brain.search and POST /search upgrade (RAG-03, RAG-04, RAG-05)
+- [ ] 02A-05-PLAN.md — Wave 5 — Embedding migration endpoints (estimate/start/status/cancel); Phase 2a acceptance test; populate VALIDATION.md; human-verify checkpoint (RAG-07 + acceptance for LLM-01..05, RAG-01..06)
 **UI hint**: no
 
 ### Phase 2b: Knowledge Graph + Agent Runner
@@ -218,7 +223,7 @@ Phases execute in order: 1a → 1b → 1c → 1d → 2a → 2b → 3 → 4 → 5
 | 1b. Auth + Security Primitives | 8/8 | Complete | 2026-05-10 |
 | 1c. Vault + Watchdog Indexer | 8/8 | Complete | 2026-05-11 |
 | 1d. MCP Server + REST API + CLI | 6/6 | Complete | 2026-05-12 |
-| 2a. LLM Gateway + Hybrid RAG Pipeline | 0/TBD | Not started | - |
+| 2a. LLM Gateway + Hybrid RAG Pipeline | 0/5 | Not started | - |
 | 2b. Knowledge Graph + Agent Runner | 0/TBD | Not started | - |
 | 3. Skills + Ingestion + Entity Enrichment | 0/TBD | Not started | - |
 | 4. Memory Dream + Brain Maintenance | 0/TBD | Not started | - |
