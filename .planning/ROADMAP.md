@@ -15,7 +15,7 @@ Decimal sub-phases execute in order within their parent integer phase.
 
 - [ ] **Phase 1a: Container + Data Layer** - Docker/supervisord, PostgreSQL 16 + pgvector, monorepo scaffold, core models and Alembic migrations (planned)
 - [x] **Phase 1b: Auth + Security Primitives** - Argon2 password hashing, JWT sessions, MCP bearer tokens, Fernet-encrypted API keys, RLS enforcement (completed 2026-05-10)
-- [ ] **Phase 1c: Vault + Watchdog Indexer** - Page CRUD with compiled-truth/timeline convention, frontmatter parsing, wikilink resolution, filesystem watchdog
+- [x] **Phase 1c: Vault + Watchdog Indexer** - Page CRUD with compiled-truth/timeline convention, frontmatter parsing, wikilink resolution, filesystem watchdog (completed 2026-05-11)
 - [x] **Phase 1d: MCP Server + REST API + CLI** - Stdio and HTTP MCP transports, REST/WebSocket API, smartcopilot CLI binary (completed 2026-05-11)
 - [ ] **Phase 2a: LLM Gateway + Hybrid RAG Pipeline** - LiteLLM router, chunker/embedder, pgvector HNSW, BM25 tsvector, RRF fusion engine
 - [ ] **Phase 2b: Knowledge Graph + Agent Runner** - Zero-LLM wikilink extraction, typed graph, recursive CTE traversal, 22-tool ReAct agent, golden query eval
@@ -215,9 +215,9 @@ Phases execute in order: 1a → 1b → 1c → 1d → 2a → 2b → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1a. Container + Data Layer | 4/4 | Complete | 2026-05-10 |
-| 1b. Auth + Security Primitives | 8/8 | Complete    | 2026-05-10 |
-| 1c. Vault + Watchdog Indexer | 0/8 | Not started | - |
-| 1d. MCP Server + REST API + CLI | 6/6 | Complete    | 2026-05-11 |
+| 1b. Auth + Security Primitives | 8/8 | Complete | 2026-05-10 |
+| 1c. Vault + Watchdog Indexer | 8/8 | Complete | 2026-05-11 |
+| 1d. MCP Server + REST API + CLI | 6/6 | Complete | 2026-05-12 |
 | 2a. LLM Gateway + Hybrid RAG Pipeline | 0/TBD | Not started | - |
 | 2b. Knowledge Graph + Agent Runner | 0/TBD | Not started | - |
 | 3. Skills + Ingestion + Entity Enrichment | 0/TBD | Not started | - |
