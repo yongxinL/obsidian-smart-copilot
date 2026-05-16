@@ -1,53 +1,53 @@
 {
   "version": "1.0",
   "timestamp": "2026-05-16T07:07:15.645Z",
-  "phase": "02B",
+  "phase": "2b",
   "phase_name": "Knowledge Graph + Agent Runner",
-  "phase_dir": ".planning/phases/02B-knowledge-graph-agent-runner",
+  "phase_dir": ".planning/phases/02b-knowledge-graph-agent-runner",
   "plan": 0,
   "task": 0,
   "total_tasks": 22,
   "status": "paused",
   "completed_tasks": [],
   "remaining_tasks": [
-    {"id": "02B-01", "name": "Alembic 0006 schema gaps + model updates + OTel/pyyaml pins", "status": "not_started", "wave": 0},
-    {"id": "02B-02", "name": "12 stub tests + 16-page fixture vault + 25 golden queries + placeholders", "status": "not_started", "wave": 0},
-    {"id": "02B-03", "name": "Wikilink extractor + entity merge + timeline events + write-path hook", "status": "not_started", "wave": 1},
-    {"id": "02B-04", "name": "Recursive-CTE traverse_graph + brain.graph.traverse real MCP impl", "status": "not_started", "wave": 2},
-    {"id": "02B-05", "name": "ReAct loop + 22-tool registry + BRAIN_FIRST prompt + Phoenix spans (human gate)", "status": "not_started", "wave": 3},
-    {"id": "02B-06", "name": "agent_service + POST /api/v1/query + brain.query MCP + jobs.submit + MCP-REST parity", "status": "not_started", "wave": 4},
-    {"id": "02B-07", "name": "Golden suite seed + eval_agent.py + Phase 3 entry gate (human gate)", "status": "not_started", "wave": 5}
+    {"id": "02b-01", "name": "Alembic 0006 schema gaps + model updates + OTel/pyyaml pins", "status": "not_started", "wave": 0},
+    {"id": "02b-02", "name": "12 stub tests + 16-page fixture vault + 25 golden queries + placeholders", "status": "not_started", "wave": 0},
+    {"id": "02b-03", "name": "Wikilink extractor + entity merge + timeline events + write-path hook", "status": "not_started", "wave": 1},
+    {"id": "02b-04", "name": "Recursive-CTE traverse_graph + brain.graph.traverse real MCP impl", "status": "not_started", "wave": 2},
+    {"id": "02b-05", "name": "ReAct loop + 22-tool registry + BRAIN_FIRST prompt + Phoenix spans (human gate)", "status": "not_started", "wave": 3},
+    {"id": "02b-06", "name": "agent_service + POST /api/v1/query + brain.query MCP + jobs.submit + MCP-REST parity", "status": "not_started", "wave": 4},
+    {"id": "02b-07", "name": "Golden suite seed + eval_agent.py + Phase 3 entry gate (human gate)", "status": "not_started", "wave": 5}
   ],
   "blockers": [
     {
       "description": "litellm not confirmed installed in dev environment — Phase 2a must be executed first (it installs litellm as part of the LLM gateway).",
       "type": "technical",
-      "workaround": "Execute Phase 2a before Phase 2b; Plan 02B-01 also pins litellm in requirements.txt"
+      "workaround": "Execute Phase 2a before Phase 2b; Plan 02b-01 also pins litellm in requirements.txt"
     },
     {
       "description": "Phoenix sidecar status unknown — Phase 2b adds SMARTCOPILOT_TRACING_ENABLED guard for graceful fallback.",
       "type": "external",
-      "workaround": "02B-05 handles this with env var guard — non-blocking"
+      "workaround": "02b-05 handles this with env var guard — non-blocking"
     }
   ],
   "human_actions_pending": [
     {
-      "action": "Verify OTel/openinference package legitimacy before Plan 05 executes (blocking checkpoint 02B-05-T0)",
+      "action": "Verify OTel/openinference package legitimacy before Plan 05 executes (blocking checkpoint 02b-05-T0)",
       "context": "openinference-instrumentation-litellm from Arize AI confirmed via WebSearch but not yet installed. Plan 05 has a human-verify gate before autonomous execution continues.",
       "blocking": true
     },
     {
-      "action": "Run golden eval suite and confirm Precision@5 >= 0.7 AND MRR >= 0.6 before Phase 3 begins (blocking checkpoint 02B-07-T3)",
+      "action": "Run golden eval suite and confirm Precision@5 >= 0.7 AND MRR >= 0.6 before Phase 3 begins (blocking checkpoint 02b-07-T3)",
       "context": "Phase 3 entry gate — must pass quality threshold before skills runtime is built on top.",
       "blocking": true
     }
   ],
   "decisions": [
-    {"decision": "Pure Python ReAct via LiteLLM tool_use API (no LangChain/CrewAI)", "rationale": "AI-SPEC framework selection; zero-dependency, fully testable loop", "phase": "02B"},
-    {"decision": "PostgreSQL recursive CTE with CYCLE clause for graph traversal (no Apache AGE, no Neo4j)", "rationale": "PostgreSQL 16 already available; CYCLE clause eliminates manual visited-array; B-tree indexes already exist in migration 0001", "phase": "02B"},
-    {"decision": "links.dst_entity_id made nullable (not null-sentinel entity)", "rationale": "Research recommendation; CHECK constraint ensures either dst_entity_id or target_slug is set for unresolved wikilinks (D-04)", "phase": "02B"},
-    {"decision": "mcp_mode enum rename-and-recreate: disabled/client/server -> disable/auto/manual", "rationale": "CONTEXT.md D-03 locked decision; uses alembic/0003 rename-and-recreate pattern", "phase": "02B"},
-    {"decision": "Upsert on UNIQUE(src_page_id, target_text, link_type) for link freshness", "rationale": "Prevents duplicate links on re-save; handles concurrent watchdog+MCP write race (Pitfall 2 from research)", "phase": "02B"}
+    {"decision": "Pure Python ReAct via LiteLLM tool_use API (no LangChain/CrewAI)", "rationale": "AI-SPEC framework selection; zero-dependency, fully testable loop", "phase": "2b"},
+    {"decision": "PostgreSQL recursive CTE with CYCLE clause for graph traversal (no Apache AGE, no Neo4j)", "rationale": "PostgreSQL 16 already available; CYCLE clause eliminates manual visited-array; B-tree indexes already exist in migration 0001", "phase": "2b"},
+    {"decision": "links.dst_entity_id made nullable (not null-sentinel entity)", "rationale": "Research recommendation; CHECK constraint ensures either dst_entity_id or target_slug is set for unresolved wikilinks (D-04)", "phase": "2b"},
+    {"decision": "mcp_mode enum rename-and-recreate: disabled/client/server -> disable/auto/manual", "rationale": "CONTEXT.md D-03 locked decision; uses alembic/0003 rename-and-recreate pattern", "phase": "2b"},
+    {"decision": "Upsert on UNIQUE(src_page_id, target_text, link_type) for link freshness", "rationale": "Prevents duplicate links on re-save; handles concurrent watchdog+MCP write race (Pitfall 2 from research)", "phase": "2b"}
   ],
   "uncommitted_files": [
     "package.json (modified — not planning-related, pre-existing)",

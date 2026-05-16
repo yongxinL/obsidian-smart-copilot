@@ -131,11 +131,11 @@ Decimal sub-phases execute in order within their parent integer phase.
   4. Multi-query expansion generates 3 paraphrases via cheap LLM tier; 4-layer deduplication runs before results returned; intent classifier routes queries to the correct retrieval mode
   5. Embedding migration endpoints (estimate/start/status/cancel) allow dimension-change migration: add column → backfill concurrently → `CREATE INDEX CONCURRENTLY` → atomic rename; migration progresses without downtime
 **Plans**: 5 plans (5 waves)
-- [ ] 02A-01-PLAN.md — Wave 1 — Foundation: Settings extension (RRF/tier knobs), Ruff TID gate, migration 0005 (denorm columns + chunk_index), Wave 0 test scaffolds (LLM-01, RAG-06)
-- [ ] 02A-02-PLAN.md — Wave 2 — LLM router (llm/router.py + tiers.py + keys.py + usage.py); per-call api_key; UsageRecorder async_log_success_event (LLM-01, LLM-02, LLM-03, LLM-04, LLM-05)
-- [ ] 02A-03-PLAN.md — Wave 3 — Chunker (tiktoken cl100k_base, D-01..D-06); embedder (1536-dim assert); APScheduler embed_worker; upsert_page chunker hook (RAG-01, RAG-02)
-- [ ] 02A-04-PLAN.md — Wave 4 — Retriever (vector ANN + BM25), reranker (RRF + 4-layer dedup + stale annotation), intent (rule-based + threshold-gated expansion), brain.search and POST /search upgrade (RAG-03, RAG-04, RAG-05)
-- [ ] 02A-05-PLAN.md — Wave 5 — Embedding migration endpoints (estimate/start/status/cancel); Phase 2a acceptance test; populate VALIDATION.md; human-verify checkpoint (RAG-07 + acceptance for LLM-01..05, RAG-01..06)
+- [ ] 02a-01-PLAN.md — Wave 1 — Foundation: Settings extension (RRF/tier knobs), Ruff TID gate, migration 0005 (denorm columns + chunk_index), Wave 0 test scaffolds (LLM-01, RAG-06)
+- [ ] 02a-02-PLAN.md — Wave 2 — LLM router (llm/router.py + tiers.py + keys.py + usage.py); per-call api_key; UsageRecorder async_log_success_event (LLM-01, LLM-02, LLM-03, LLM-04, LLM-05)
+- [ ] 02a-03-PLAN.md — Wave 3 — Chunker (tiktoken cl100k_base, D-01..D-06); embedder (1536-dim assert); APScheduler embed_worker; upsert_page chunker hook (RAG-01, RAG-02)
+- [ ] 02a-04-PLAN.md — Wave 4 — Retriever (vector ANN + BM25), reranker (RRF + 4-layer dedup + stale annotation), intent (rule-based + threshold-gated expansion), brain.search and POST /search upgrade (RAG-03, RAG-04, RAG-05)
+- [ ] 02a-05-PLAN.md — Wave 5 — Embedding migration endpoints (estimate/start/status/cancel); Phase 2a acceptance test; populate VALIDATION.md; human-verify checkpoint (RAG-07 + acceptance for LLM-01..05, RAG-01..06)
 **UI hint**: no
 
 ### Phase 2b: Knowledge Graph + Agent Runner
@@ -151,23 +151,23 @@ Decimal sub-phases execute in order within their parent integer phase.
 **Plans**: 7 plans (6 waves)
 
 **Wave 0** *(parallel — no dependencies)*
-- [ ] 02B-01-PLAN.md — Alembic 0006 (links + mcp_mode enum + messages + golden_queries) + model updates + OTel/pyyaml pins (GRAPH-01, GRAPH-02, AGENT-05, AGENT-06)
-- [ ] 02B-02-PLAN.md — Wave 0 test scaffolds (12 stub tests) + 16-page fixture vault + golden_queries.yaml (25 queries) + placeholder snapshots (TEST-05)
+- [ ] 02b-01-PLAN.md — Alembic 0006 (links + mcp_mode enum + messages + golden_queries) + model updates + OTel/pyyaml pins (GRAPH-01, GRAPH-02, AGENT-05, AGENT-06)
+- [ ] 02b-02-PLAN.md — Wave 0 test scaffolds (12 stub tests) + 16-page fixture vault + golden_queries.yaml (25 queries) + placeholder snapshots (TEST-05)
 
 **Wave 1** *(blocked on Wave 0 completion)*
-- [ ] 02B-03-PLAN.md — Wikilink extractor + entity merge + timeline events + write-path hook in pages.py + expected_links.json bless (GRAPH-01, GRAPH-02, GRAPH-04, GRAPH-05)
+- [ ] 02b-03-PLAN.md — Wikilink extractor + entity merge + timeline events + write-path hook in pages.py + expected_links.json bless (GRAPH-01, GRAPH-02, GRAPH-04, GRAPH-05)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 02B-04-PLAN.md — Recursive-CTE graph traversal in services/graph.py + brain.graph.traverse MCP tool real implementation (GRAPH-03, GRAPH-06)
+- [ ] 02b-04-PLAN.md — Recursive-CTE graph traversal in services/graph.py + brain.graph.traverse MCP tool real implementation (GRAPH-03, GRAPH-06)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 02B-05-PLAN.md — agent/ package: react_loop + 22-tool registry + BRAIN_FIRST_SYSTEM_PROMPT + Phoenix span helpers + package-legitimacy checkpoint (AGENT-01, AGENT-02, AGENT-03)
+- [ ] 02b-05-PLAN.md — agent/ package: react_loop + 22-tool registry + BRAIN_FIRST_SYSTEM_PROMPT + Phoenix span helpers + package-legitimacy checkpoint (AGENT-01, AGENT-02, AGENT-03)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 02B-06-PLAN.md — agent_service entry points + POST /api/v1/query + brain.query MCP tool + jobs.submit partial APScheduler path + MCP-REST parity (AGENT-04, AGENT-05)
+- [ ] 02b-06-PLAN.md — agent_service entry points + POST /api/v1/query + brain.query MCP tool + jobs.submit partial APScheduler path + MCP-REST parity (AGENT-04, AGENT-05)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 02B-07-PLAN.md — seed_golden_suite.py + scripts/eval_agent.py + eval_baseline.json + Phase 3 entry gate human-verify checkpoint + VALIDATION.md nyquist_compliant=true (AGENT-06, TEST-05)
+- [ ] 02b-07-PLAN.md — seed_golden_suite.py + scripts/eval_agent.py + eval_baseline.json + Phase 3 entry gate human-verify checkpoint + VALIDATION.md nyquist_compliant=true (AGENT-06, TEST-05)
 
 **Cross-cutting constraints:**
 - session_with_rls(ctx) required for every DB operation in graph + agent paths
