@@ -148,7 +148,34 @@ Decimal sub-phases execute in order within their parent integer phase.
   3. Agent queries local brain (`search`/`get_page`) before any external API call; ReAct loop with all 22 tools operational; `skill_run` tool stub present and callable (wired to skills runtime in Phase 3); `jobs.submit` tool submits to APScheduler
   4. Multi-turn conversation recorded in `conversations` table with citations, token usage, and model tracking; `mcp_mode` (`disable`/`auto`/`manual`) and `web_search_enabled` flags respected
   5. Golden query eval suite initialized: `golden_query_suites` and `golden_queries` tables seeded with fixture corpus; `golden_query_runs` records Precision@K, Recall@K, MRR, nDCG@K, p95 latency; retrieval benchmark passes quality gate before Phase 3
-**Plans**: TBD
+**Plans**: 7 plans (6 waves)
+
+**Wave 0** *(parallel — no dependencies)*
+- [ ] 02B-01-PLAN.md — Alembic 0006 (links + mcp_mode enum + messages + golden_queries) + model updates + OTel/pyyaml pins (GRAPH-01, GRAPH-02, AGENT-05, AGENT-06)
+- [ ] 02B-02-PLAN.md — Wave 0 test scaffolds (12 stub tests) + 16-page fixture vault + golden_queries.yaml (25 queries) + placeholder snapshots (TEST-05)
+
+**Wave 1** *(blocked on Wave 0 completion)*
+- [ ] 02B-03-PLAN.md — Wikilink extractor + entity merge + timeline events + write-path hook in pages.py + expected_links.json bless (GRAPH-01, GRAPH-02, GRAPH-04, GRAPH-05)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 02B-04-PLAN.md — Recursive-CTE graph traversal in services/graph.py + brain.graph.traverse MCP tool real implementation (GRAPH-03, GRAPH-06)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 02B-05-PLAN.md — agent/ package: react_loop + 22-tool registry + BRAIN_FIRST_SYSTEM_PROMPT + Phoenix span helpers + package-legitimacy checkpoint (AGENT-01, AGENT-02, AGENT-03)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 02B-06-PLAN.md — agent_service entry points + POST /api/v1/query + brain.query MCP tool + jobs.submit partial APScheduler path + MCP-REST parity (AGENT-04, AGENT-05)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 02B-07-PLAN.md — seed_golden_suite.py + scripts/eval_agent.py + eval_baseline.json + Phase 3 entry gate human-verify checkpoint + VALIDATION.md nyquist_compliant=true (AGENT-06, TEST-05)
+
+**Cross-cutting constraints:**
+- session_with_rls(ctx) required for every DB operation in graph + agent paths
+- No FastAPI types in services/ (agent_service.py is transport-agnostic)
+- All wikilink + frontmatter parsing uses yaml.safe_load (never yaml.load)
+- BRAIN_FIRST_SYSTEM_PROMPT hash captured in tests/fixtures/system_prompt.sha256 for drift detection
+- All SQL queries (CTE + upserts) use parameterised binding — no f-strings or .format() on SQL
+
 **UI hint**: no
 
 ### Phase 3: Skills + Ingestion + Entity Enrichment
@@ -224,7 +251,7 @@ Phases execute in order: 1a → 1b → 1c → 1d → 2a → 2b → 3 → 4 → 5
 | 1c. Vault + Watchdog Indexer | 8/8 | Complete | 2026-05-11 |
 | 1d. MCP Server + REST API + CLI | 6/6 | Complete | 2026-05-12 |
 | 2a. LLM Gateway + Hybrid RAG Pipeline | 0/5 | Not started | - |
-| 2b. Knowledge Graph + Agent Runner | 0/TBD | Not started | - |
+| 2b. Knowledge Graph + Agent Runner | 0/7 | Not started | - |
 | 3. Skills + Ingestion + Entity Enrichment | 0/TBD | Not started | - |
 | 4. Memory Dream + Brain Maintenance | 0/TBD | Not started | - |
 | 5. Web Search + Projects + Vault Intelligence | 0/TBD | Not started | - |
